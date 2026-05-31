@@ -1,0 +1,7 @@
+{
+  "127": {
+    "asb_date": "2026-04",
+    "supported_r": ["r13", "none"],
+    "default_r": "r13"
+  }
+}

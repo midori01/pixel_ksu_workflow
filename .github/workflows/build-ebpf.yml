@@ -1,0 +1,97 @@
+name: Module - Build Scene Hider eBPF
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends git clang llvm libelf-dev zlib1g-dev make zstd zip unzip
+
+      - name: Clone repositories
+        run: |
+          git clone --recurse-submodules --depth=1 https://github.com/libbpf/bpftool.git /tmp/bpftool
+          git clone --depth=1 https://github.com/Andrea-lyz/Scene-Port-Hider-by-eBPF.git ebpf
+
+      - name: Build bpftool
+        run: |
+          make -j$(nproc) -C /tmp/bpftool/src
+
+      - name: Wait for first vmlinux
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 500); do
+            JOBS=$(gh run view ${{ github.run_id }} --repo ${{ github.repository }} --json jobs 2>/dev/null || echo '{"jobs":[]}')
+            if [ -z "$JOBS" ]; then
+              echo "gh API returned empty, retrying... ($i/500)"
+              sleep 3
+              continue
+            fi
+            SUCCESS=$(echo "$JOBS" | jq -r '.jobs[] | select(.name | startswith("Midori")) | select(.status=="completed" and .conclusion=="success") | .name' 2>/dev/null || true)
+            if [ -n "$SUCCESS" ]; then
+              echo "Kernel build completed, proceeding..."
+              break
+            fi
+            FAILED=$(echo "$JOBS" | jq -r '.jobs[] | select(.name | startswith("Midori")) | select(.status=="completed" and .conclusion!="success" and .conclusion!="skipped") | .name' 2>/dev/null || true)
+            TOTAL=$(echo "$JOBS" | jq -r '.jobs[] | select(.name | startswith("Midori")) | .name' 2>/dev/null || true)
+            FAILED_COUNT=$(echo "$FAILED" | sed '/^$/d' | wc -l)
+            TOTAL_COUNT=$(echo "$TOTAL" | sed '/^$/d' | wc -l)
+            OK_COUNT=$(echo "$SUCCESS" | sed '/^$/d' | wc -l)
+            if [ "$TOTAL_COUNT" -gt 0 ] && [ "$FAILED_COUNT" -eq "$TOTAL_COUNT" ]; then
+              echo "::error::All kernel builds failed or cancelled, aborting."
+              exit 1
+            fi
+            echo "Waiting... ($i/500) [ok=$OK_COUNT fail=$FAILED_COUNT total=$TOTAL_COUNT]"
+            sleep 3
+          done
+          if [ -z "$SUCCESS" ]; then
+            echo "::error::No kernel build completed within 25 minutes, aborting."
+            exit 1
+          fi
+
+      - name: Download first vmlinux
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID=${{ github.run_id }}
+          ARTIFACT_ID=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/artifacts" --jq '.artifacts[] | select(.name | startswith("vmlinux-")) | .id' | head -1)
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "::error::No vmlinux artifact found"
+            exit 1
+          fi
+          echo "Downloading artifact ID: $ARTIFACT_ID"
+          cd /tmp
+          gh api "repos/${{ github.repository }}/actions/artifacts/${ARTIFACT_ID}/zip" > vmlinux.zip
+          unzip -qo vmlinux.zip -d vmlinux && rm vmlinux.zip
+
+      - name: Build eBPF module
+        run: |
+          zstd -d -f /tmp/vmlinux/*.zst -o /tmp/vmlinux_raw
+          cd ebpf && mkdir -p src output
+          /tmp/bpftool/src/bpftool btf dump file /tmp/vmlinux_raw format c > src/vmlinux.h
+          BPFTOOL=/tmp/bpftool/src/bpftool bash tools/build_from_btf.sh || true
+
+      - name: Strip BTF check and repack
+        run: |
+          cd "$(mktemp -d)"
+          unzip -q "$(find "$GITHUB_WORKSPACE" -maxdepth 2 -name '*.zip' | head -1)" -d .
+          [ -f customize.sh ] && sed -i '/^# ── Kernel BTF fingerprint verification/,/^ui_print "- Kernel BTF matched"/d' customize.sh && sed -i '/^$/N;/^\n$/d' customize.sh
+          zip -rq "$GITHUB_WORKSPACE/ebpf/output/ScenePortHider-eBPF.zip" .
+
+      - uses: actions/upload-artifact@v7
+        if: success()
+        with:
+          name: ScenePortHider-eBPF
+          path: ebpf/output/*.zip
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: ScenePortHider-eBPF
+          path: /dev/null

@@ -1,0 +1,295 @@
+name: Module - Build Kernel Image
+
+on:
+  workflow_call:
+    inputs:
+      variant:
+        required: true
+        type: string
+      midorixx_branch:
+        required: false
+        type: string
+        default: 'backslashxx/KernelSU:master'
+      hook_mode:
+        required: false
+        type: string
+      midorixx_tag:
+        required: false
+        type: string
+      source_mirror:
+        required: true
+        type: string
+      sub_level:
+        required: true
+        type: string
+      asb_date:
+        required: true
+        type: string
+      r_version:
+        required: true
+        type: string
+      use_ccache:
+        required: false
+        type: boolean
+        default: true
+      use_droidspaces:
+        required: true
+        type: boolean
+      use_susfs:
+        required: true
+        type: boolean
+      susfs_commit:
+        required: false
+        type: string
+        default: ''
+      build_ebpf:
+        required: true
+        type: boolean
+      kernel_localversion:
+        required: true
+        type: string
+      build_epoch:
+        required: true
+        type: string
+      build_timestamp:
+        required: true
+        type: string
+      build_user:
+        required: true
+        type: string
+      build_host:
+        required: true
+        type: string
+      clang_version:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      ANDROID_VERSION: 'android15'
+      KERNEL_VERSION: '6.6'
+      R_SUFFIX: ${{ inputs.r_version != 'none' && format('_{0}', inputs.r_version) || '' }}
+      DS_SUFFIX: ${{ inputs.use_droidspaces && '-Droidspaces' || '' }}
+      SUSFS_SUFFIX: ${{ inputs.use_susfs && inputs.variant == 'MidoriSU' && '-SUSFS' || '' }}
+      PREFIX: ${{ inputs.variant }}
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-${{ inputs.variant }}${{ inputs.use_susfs && inputs.variant == 'MidoriSU' && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}
+      CCACHE_COMPILERCHECK: content
+      CCACHE_SLOPPINESS: file_macro,time_macros,include_file_mtime,include_file_ctime
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Free Disk Space & Install Dependencies
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true &
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            binutils python-is-python3 libssl-dev libelf-dev libdw-dev bison flex bc aria2 ccache &
+
+      - name: Restore Ccache
+        if: inputs.use_ccache
+        id: cache-restore
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            .ccache-${{ inputs.variant }}${{ inputs.use_susfs && inputs.variant == 'MidoriSU' && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}
+          key: gki-6.6-${{ inputs.clang_version }}-${{ inputs.asb_date }}${{ env.R_SUFFIX }}-${{ inputs.variant }}${{ inputs.use_susfs && inputs.variant == 'MidoriSU' && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}-${{ github.run_id }}-${{ strategy.job-index }}
+          restore-keys: |
+            gki-6.6-${{ inputs.clang_version }}-${{ inputs.asb_date }}${{ env.R_SUFFIX }}-${{ inputs.variant }}${{ inputs.use_susfs && inputs.variant == 'MidoriSU' && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}-
+
+      - name: Setup Ccache Wrappers
+        if: inputs.use_ccache
+        run: |
+          CCACHE_PATH="${{ github.workspace }}/.ccache-bin"
+          mkdir -p "$CCACHE_PATH" && rm -f "$CCACHE_PATH"/*
+          for prog in clang clang++ ld.lld llvm-ar llvm-nm llvm-objcopy llvm-objdump llvm-size llvm-readelf llvm-strip; do
+            ln -sf "$(which ccache)" "$CCACHE_PATH/$prog"
+          done
+          echo "$CCACHE_PATH" >> $GITHUB_PATH
+          ccache -M 5G
+          ccache -o hash_dir=false
+          ccache -o compiler_check=content
+          ccache -o sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,modules
+          ccache -o depend_mode=true
+          ccache -o run_second_cpp=true
+          ccache -z
+
+      - name: Download Toolchains & Kernel Source
+        run: |
+          mkdir -p kernel_workspace && cd kernel_workspace
+          TOOLCHAIN_MIRROR="https://github.com/MidoriKSU/dami-kernel-build/releases/download/6.6"
+          CLANG_TAR="${{ inputs.clang_version }}.tar.gz"
+          GOOGLE_MIRROR="https://android.googlesource.com/kernel/common/+archive/refs/tags"
+          MIDORI_MIRROR="https://github.com/MidoriKSU/dami-kernel-build/releases/download/6.6"
+          KERNEL_TAR="${ANDROID_VERSION}-${KERNEL_VERSION}-${{ inputs.asb_date }}${R_SUFFIX}.tar.gz"
+          KERNEL_BASE_URL=$([ "${{ inputs.source_mirror }}" == "google" ] && echo "$GOOGLE_MIRROR" || echo "$MIDORI_MIRROR")
+          aria2c -s16 -x16 -k1M "$TOOLCHAIN_MIRROR/$CLANG_TAR" -o clang.tar.gz && mkdir -p clang && tar -xzf clang.tar.gz -C clang && rm clang.tar.gz &
+          aria2c -s16 -x16 -k1M "$TOOLCHAIN_MIRROR/build-tools.tar.gz" -o build-tools.tar.gz && mkdir -p build-tools && tar -xzf build-tools.tar.gz -C build-tools && rm build-tools.tar.gz &
+          aria2c -s16 -x16 -k1M "$KERNEL_BASE_URL/$KERNEL_TAR" -o common.tar.gz && mkdir -p common && tar -xzf common.tar.gz -C common &
+          wait
+          sed -i 's/ -dirty//g' common/scripts/setlocalversion
+          rm common/android/abi_gki_protected_exports_* || true
+
+      - name: Clone & Setup KernelSU
+        working-directory: kernel_workspace/common
+        run: |
+          if [ "${{ inputs.variant }}" == "MidoriSU" ]; then
+            git clone --single-branch --branch=main https://github.com/midori01/KernelSU.git KernelSU
+            sed -i 's|ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include|ccflags-y += -I$(srctree)/$(src) -I$(srctree)/$(src)/include -I$(src) -I$(src)/include|' KernelSU/kernel/Kbuild
+          elif [ "${{ inputs.variant }}" == "MidoriXX" ]; then
+            IFS=':' read -r REPO BRANCH <<< "${{ inputs.midorixx_branch }}"
+            git clone --branch="${BRANCH}" "https://github.com/${REPO}.git" KernelSU
+            git -C KernelSU checkout "${{ inputs.midorixx_tag || 'HEAD' }}"
+            bash "${{ github.workspace }}/.github/scripts/_setup_midorixx.sh"
+          fi
+          ln -sf ../KernelSU/kernel drivers/kernelsu
+          grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
+          grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+
+      - name: Setup SUSFS (MidoriSU)
+        if: inputs.variant == 'MidoriSU' && inputs.use_susfs
+        working-directory: kernel_workspace/common
+        run: |
+          SUSFS_DIR="${{ github.workspace }}/susfs4ksu"
+          if [ -n "${{ inputs.susfs_commit }}" ]; then
+            git clone https://gitlab.com/simonpunk/susfs4ksu "$SUSFS_DIR"
+            git -C "$SUSFS_DIR" checkout "${{ inputs.susfs_commit }}"
+          else
+            git clone --depth=1 --branch=gki-android15-6.6 https://gitlab.com/simonpunk/susfs4ksu "$SUSFS_DIR"
+          fi
+          cp "$SUSFS_DIR/kernel_patches/fs/susfs.c" fs/
+          cp "$SUSFS_DIR/kernel_patches/include/linux/susfs.h" include/linux/
+          cp "$SUSFS_DIR/kernel_patches/include/linux/susfs_def.h" include/linux/
+          patch -p1 < "$SUSFS_DIR/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch"
+          patch -p1 -d KernelSU < "${{ github.workspace }}/.github/patches/10_enable_susfs_for_ksu.patch"
+
+      - name: Apply Manual Hooks (MidoriXX)
+        if: inputs.variant == 'MidoriXX' && inputs.hook_mode != 'hookless'
+        working-directory: kernel_workspace/common
+        run: |
+          patch -p1 < "${{ github.workspace }}/.github/patches/scope-min-manual-hooks-v2.2.patch"
+
+      - name: Save Commit Info
+        if: inputs.variant == 'MidoriSU' || inputs.variant == 'MidoriXX'
+        working-directory: kernel_workspace/common
+        run: |
+          COMMIT_DIR="$(pwd)/commit_info"
+          mkdir -p "$COMMIT_DIR"
+          cd KernelSU
+          save_ksu_commit() {
+            local PREFIX=$1
+            git rev-parse HEAD > "$COMMIT_DIR/${PREFIX}_ksu_commit"
+            git log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M %z' HEAD > "$COMMIT_DIR/${PREFIX}_ksu_date"
+          }
+          save_susfs_commit() {
+            local PREFIX=$1
+            if [ "${{ inputs.use_susfs }}" == "true" ] && [ -d "${{ github.workspace }}/susfs4ksu" ]; then
+              pushd "${{ github.workspace }}/susfs4ksu" > /dev/null
+              git rev-parse HEAD > "$COMMIT_DIR/${PREFIX}_susfs_commit"
+              git log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M %z' HEAD > "$COMMIT_DIR/${PREFIX}_susfs_date"
+              popd > /dev/null
+            fi
+          }
+          case "${{ inputs.variant }}" in
+            MidoriSU)
+              save_ksu_commit midorisu
+              git rev-list --count HEAD > "$COMMIT_DIR/ksu_commit_count"
+              save_susfs_commit midorisu
+              ;;
+            MidoriXX)
+              save_ksu_commit midorixx
+              IFS=':' read -r REPO BRANCH <<< "${{ inputs.midorixx_branch }}"
+              echo "${REPO}" > "$COMMIT_DIR/midorixx_ksu_repo"
+              ;;
+          esac
+
+      - name: Upload Commit Info
+        if: inputs.variant == 'MidoriSU' || inputs.variant == 'MidoriXX'
+        uses: actions/upload-artifact@v7
+        with:
+          name: commit-info-${{ env.PREFIX }}${{ env.SUSFS_SUFFIX }}${{ env.DS_SUFFIX }}
+          path: kernel_workspace/common/commit_info/
+          retention-days: 1
+
+      - name: Integrate Droidspaces Support
+        if: inputs.use_droidspaces
+        working-directory: kernel_workspace/common
+        run: |
+          patch -p1 --forward < "${{ github.workspace }}/.github/patches/fix_sysvipc_kabi.patch" || true
+
+      - name: Inject Kernel Configs
+        uses: ./.github/actions/kernel-config
+        with:
+          defconfig_path: "kernel_workspace/common/arch/arm64/configs/gki_defconfig"
+          build_config_path: "kernel_workspace/common/build.config.gki"
+          variant: ${{ inputs.variant }}
+          enable_susfs: ${{ inputs.use_susfs }}
+          localversion: ${{ inputs.kernel_localversion }}
+          use_droidspaces: ${{ inputs.use_droidspaces }}
+          hook_mode: ${{ inputs.hook_mode }}
+
+      - name: Compile Kernel
+        working-directory: kernel_workspace/common
+        run: |
+          WORK_DIR="${{ github.workspace }}/kernel_workspace"
+          export PATH="${WORK_DIR}/clang/bin:${WORK_DIR}/build-tools/bin:${PATH}"
+          CCACHE_WRAPPER_DIR="${{ github.workspace }}/.ccache-bin"
+          if [ -d "$CCACHE_WRAPPER_DIR" ]; then
+            export PATH="${CCACHE_WRAPPER_DIR}:${PATH}"
+          fi
+          export SOURCE_DATE_EPOCH="${{ inputs.build_epoch }}"
+          export KBUILD_BUILD_TIMESTAMP="${{ inputs.build_timestamp }}"
+          export KBUILD_BUILD_HOST="${{ inputs.build_host }}"
+          export KBUILD_BUILD_USER="${{ inputs.build_user }}"
+          make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig
+          make -j$(nproc) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
+          if [ "${{ inputs.use_ccache }}" == "true" ]; then
+            ccache -s
+          fi
+
+      - name: Export vmlinux for eBPF
+        if: inputs.build_ebpf
+        working-directory: kernel_workspace/common/out
+        run: |
+          if [ -f "vmlinux" ]; then
+            zstd -T0 -10 vmlinux -o vmlinux.zst
+          fi
+
+      - name: Upload vmlinux Artifact
+        if: inputs.build_ebpf
+        uses: actions/upload-artifact@v7
+        with:
+          name: vmlinux-${{ env.PREFIX }}${{ env.SUSFS_SUFFIX }}${{ env.DS_SUFFIX }}
+          path: kernel_workspace/common/out/vmlinux.zst
+          retention-days: 1
+
+      - name: Package & Boot-Ready Check
+        working-directory: kernel_workspace
+        run: |
+          IMAGE="common/out/arch/arm64/boot/Image"
+          [ -f "$IMAGE" ] || { echo "Binary Missing!"; exit 1; }
+          ZIP_NAME="${PREFIX}_Kernel-${KERNEL_VERSION}.${{ inputs.sub_level }}${R_SUFFIX}${SUSFS_SUFFIX}${DS_SUFFIX}.zip"
+          git clone --depth=1 https://github.com/midori01/AnyKernel3 -b pixel anykernel
+          cp "$IMAGE" anykernel/
+          cd anykernel && rm -rf .git && zip -r9 "../$ZIP_NAME" *
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Save Ccache
+        if: inputs.use_ccache
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            .ccache-${{ inputs.variant }}${{ inputs.use_susfs && inputs.variant == 'MidoriSU' && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Kernel-${{ env.PREFIX }}${{ env.SUSFS_SUFFIX }}${{ env.DS_SUFFIX }}${{ env.R_SUFFIX }}
+          path: kernel_workspace/${{ env.ZIP_NAME }}
