@@ -6,7 +6,8 @@ TMP_DIR="/tmp/kernel-check"
 rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 
-# Cache json values to avoid nested jq
+REPO="${GITHUB_REPOSITORY:-midori01/gki_ksu_workflow}"
+
 SUB_612=$(jq -r '.["6.12"].default_sub_level' "$CONFIG_FILE")
 R_612=$(jq -r ".[\"6.12\"].revisions[\"$SUB_612\"].default_r" "$CONFIG_FILE")
 
@@ -18,15 +19,46 @@ SUB_61_TAG=$(jq -r '.["6.1"].revisions | to_entries[] | select(.value.asb_date =
 
 SUB_61_LTS=$(jq -r '.["6.1"].revisions | to_entries[] | select(.value.asb_date == "lts") | .key' "$CONFIG_FILE")
 
+NEEDS_COMMIT=false
+
 echo "=== Fetching tags from AOSP common kernel ==="
 git ls-remote --tags https://android.googlesource.com/kernel/common.git 2>/dev/null | \
   awk '{print $2}' | sed 's|refs/tags/||; s|\^{}||' | sort -Vu > "$TMP_DIR/all_tags.txt"
 
+download_and_upload() {
+  local release_tag="$1" kv="$2" android_ver="$3" asb_date="$4" r_suffix="$5"
+  local tar_name="${android_ver}-${kv}-${asb_date}${r_suffix}.tar.gz"
+  local google_url="https://android.googlesource.com/kernel/common/+archive/refs/tags/${tar_name}"
+  local local_file="$TMP_DIR/${tar_name}"
+
+  echo "  Downloading $tar_name ..."
+  if curl -fsSL --connect-timeout 30 "$google_url" -o "$local_file"; then
+    echo "  Uploading to release $release_tag ..."
+    gh release upload "$release_tag" "$local_file" --repo "$REPO" --clobber 2>/dev/null || true
+    echo "  Done: $tar_name"
+  else
+    echo "  Failed to download $tar_name"
+  fi
+}
+
+download_lts_and_upload() {
+  local release_tag="$1" kv="$2" android_ver="$3"
+  local tar_name="${android_ver}-${kv}-lts.tar.gz"
+  local head_url="https://android.googlesource.com/kernel/common/+archive/refs/heads/${android_ver}-${kv}-lts.tar.gz"
+  local local_file="$TMP_DIR/${tar_name}"
+
+  echo "  Downloading LTS $tar_name ..."
+  if curl -fsSL --connect-timeout 30 "$head_url" -o "$local_file"; then
+    echo "  Uploading to release $release_tag ..."
+    gh release upload "$release_tag" "$local_file" --repo "$REPO" --clobber 2>/dev/null || true
+    echo "  Done: $tar_name"
+  else
+    echo "  Failed to download $tar_name"
+  fi
+}
+
 check_tag() {
-  local kv="$1"       # kernel_version, e.g. "6.12"
-  local asb_date="$2" # e.g. "2025-06"
-  local current_sub="$3"
-  local current_r="$4"
+  local kv="$1" asb_date="$2" current_sub="$3" current_r="$4"
 
   echo ""
   echo "=== Checking $kv tag $asb_date (current: sub=$current_sub r=$current_r) ==="
@@ -73,12 +105,15 @@ check_tag() {
       .[$kv].revisions[$sub] = {"asb_date": $asb, "default_r": $r, "supported_r": [$r, "none"]}' \
      "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
 
-  echo "  Updated."
+  echo "  Updated JSON. Downloading source..."
+  local r_suffix=""
+  [[ "$new_r" != "none" ]] && r_suffix="_$new_r"
+  download_and_upload "$kv" "$kv" "$android_ver" "$asb_date" "$r_suffix"
+  NEEDS_COMMIT=true
 }
 
 check_lts() {
-  local kv="$1"       # kernel_version, e.g. "6.6"
-  local current_sub="$2"
+  local kv="$1" current_sub="$2"
 
   echo ""
   echo "=== Checking $kv LTS (current sub=$current_sub) ==="
@@ -106,20 +141,21 @@ check_lts() {
       .[$kv].revisions[$sub] = {"asb_date": "lts", "default_r": "none", "supported_r": ["none"]}' \
      "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
 
-  echo "  Updated."
+  echo "  Updated JSON. Downloading LTS source..."
+  download_lts_and_upload "$kv" "$kv" "$android_ver"
+  NEEDS_COMMIT=true
 }
 
-# 6.12 tag
 check_tag "6.12" "2025-06" "$SUB_612" "$R_612"
-
-# 6.6 tag
 check_tag "6.6" "2026-04" "$SUB_66_TAG" "r14"
-
-# 6.6 LTS
 check_lts "6.6" "$SUB_66_LTS"
-
-# 6.1 tag
 check_tag "6.1" "2026-03" "$SUB_61_TAG" "r14"
-
-# 6.1 LTS
 check_lts "6.1" "$SUB_61_LTS"
+
+if [ "$NEEDS_COMMIT" = true ]; then
+  git config user.name "github-actions"
+  git config user.email "actions@github.com"
+  git add "$CONFIG_FILE"
+  git diff --staged --quiet || git commit -m "auto: update kernel versions and upload sources"
+  git push
+fi

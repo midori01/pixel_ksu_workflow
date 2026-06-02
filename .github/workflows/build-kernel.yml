@@ -136,7 +136,7 @@ jobs:
       - name: Download Toolchains & Kernel Source
         run: |
           mkdir -p kernel_workspace && cd kernel_workspace
-          MIDORI_MIRROR="https://github.com/MidoriKSU/dami-kernel-build/releases/download/${{ steps.cfg.outputs.mirror_tag }}"
+          MIDORI_MIRROR="https://github.com/${{ github.repository }}/releases/download/${{ steps.cfg.outputs.mirror_tag }}"
           CLANG_TAR="clang-${{ steps.cfg.outputs.clang_version }}.tar.gz"
           KERNEL_TAR="${{ steps.cfg.outputs.android_version }}-${{ inputs.kernel_version }}-${{ steps.cfg.outputs.asb_date }}${{ steps.cfg.outputs.r_suffix }}.tar.gz"
           if [ "${{ inputs.source_mirror }}" = "google" ]; then
