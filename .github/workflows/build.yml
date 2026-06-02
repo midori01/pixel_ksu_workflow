@@ -3,6 +3,15 @@ name: Build and Release
 on:
   workflow_dispatch:
     inputs:
+      kernel_version:
+        description: 'Kernel Version'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - '6.6'
+          - '6.12'
       source_mirror:
         description: 'Kernel Source'
         required: true
@@ -11,21 +20,6 @@ on:
         options:
           - google
           - midori
-      sub_level:
-        description: 'Kernel Sublevel'
-        required: true
-        default: '127'
-        type: choice
-        options:
-          - '127'
-      r_version:
-        description: 'Kernel Revision'
-        required: true
-        default: 'r13'
-        type: choice
-        options:
-          - none
-          - r13
       ksu_variant:
         description: 'KernelSU Variant'
         required: true
@@ -35,6 +29,16 @@ on:
           - all
           - MidoriSU
           - MidoriXX
+          - MidoriRE
+      midorire_branch:
+        description: 'MidoriRE Source'
+        required: true
+        default: 'ReSukiSU/ReSukiSU:main'
+        type: choice
+        options:
+          - 'midori01/ReSukiSU:main'
+          - 'midori01/ReSukiSU:test'
+          - 'ReSukiSU/ReSukiSU:main'
       midorixx_branch:
         description: 'MidoriXX Source'
         required: true
@@ -78,19 +82,19 @@ on:
         default: true
         type: boolean
       susfs_commit:
-        description: 'SUSFS Commit (Leave blank for latest, only affects MidoriSU)'
+        description: 'SUSFS Commit (Leave blank for latest, only affects MidoriSU/MidoriRE)'
         required: false
         default: ''
         type: string
       kernel_localversion:
         description: 'Spoof Kernel Name'
         required: true
-        default: '-gki-droidspaces-midori-build'
+        default: '-gki-midori-build'
         type: string
       build_timestamp:
         description: 'Spoof Build Time'
         required: true
-        default: 'Tue Mar 03 03:03:03 JST 2026'
+        default: 'Mon Feb 02 02:02:02 JST 2026'
         type: string
       build_user:
         description: 'Spoof Build User'
@@ -105,17 +109,8 @@ on:
       build_epoch:
         description: 'SOURCE_DATE_EPOCH'
         required: true
-        default: '1771142583'
+        default: '1764155774'
         type: string
-      clang_version:
-        description: 'Compiler Version'
-        required: true
-        default: 'clang-r510928'
-        type: choice
-        options:
-          - clang-r510928
-          - clang-r536225
-          - clang-r547379
       release_type:
         description: 'Release Type'
         required: true
@@ -136,11 +131,8 @@ jobs:
     outputs:
       release_tag: ${{ steps.config.outputs.release_tag }}
       build_matrix: ${{ steps.config.outputs.build_matrix }}
-      asb_date: ${{ steps.parse_config.outputs.asb_date }}
-      r_version: ${{ steps.parse_config.outputs.r_version }}
-      r_suffix: ${{ steps.config.outputs.r_suffix }}
-      source_base_url: ${{ steps.config.outputs.source_base_url }}
-      mirror_name: ${{ steps.config.outputs.mirror_name }}
+      metadata: ${{ steps.config.outputs.metadata }}
+      kernel_versions: ${{ steps.config.outputs.kernel_versions }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
@@ -148,71 +140,93 @@ jobs:
       - id: config
         name: Prepare build matrix and metadata
         run: |
-          echo "release_tag=build-$(date +'%y%m%d%H%M%S')" >> $GITHUB_OUTPUT
-          echo "r_suffix=${{ inputs.r_version != 'none' && format('_{0}', inputs.r_version) || '' }}" >> $GITHUB_OUTPUT
-          if [ "${{ inputs.source_mirror }}" == "google" ]; then
-            echo "source_base_url=https://android.googlesource.com/kernel/common/+archive/refs/tags" >> $GITHUB_OUTPUT
-            echo "mirror_name=Google" >> $GITHUB_OUTPUT
-          else
-            echo "source_base_url=https://github.com/MidoriKSU/dami-kernel-build/releases/download/1.0" >> $GITHUB_OUTPUT
-            echo "mirror_name=GitHub" >> $GITHUB_OUTPUT
-          fi
+          echo "release_tag=$(TZ='Asia/Tokyo' date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+          config_file=".github/config/kernel_versions.json"
 
-          add_variants() {
-            local VARIANT=$1 HAS_SUSFS=$2
-            local DS_LIST="false"
-            [ "${{ inputs.use_droidspaces }}" == "true" ] && DS_LIST="false true"
-            local SUS_LIST="false"
-            [ "$HAS_SUSFS" == "true" ] && [ "${{ inputs.enable_susfs }}" == "true" ] && SUS_LIST="false true"
-            for DS in $DS_LIST; do
-              for SUS in $SUS_LIST; do
-                MATRIX=$(echo "$MATRIX" | jq -c '.include += [{"variant":"'$VARIANT'","droidspaces":'$DS',"susfs":'$SUS'}]')
+          if [ "${{ inputs.kernel_version }}" = "all" ]; then
+            kvs='["6.6","6.12"]'
+          else
+            kvs='["${{ inputs.kernel_version }}"]'
+          fi
+          echo "kernel_versions=$kvs" >> $GITHUB_OUTPUT
+
+          rm -f /tmp/metadata.json
+          echo "$kvs" | jq -r '.[]' > /tmp/kvs.txt
+
+          matrix='{"include":[]}'
+          variant="${{ inputs.ksu_variant }}"
+          while read kv; do
+            config=$(jq -c '.["'$kv'"]' "$config_file")
+            android_version=$(echo "$config" | jq -r '.android_version')
+            sub_level=$(echo "$config" | jq -r '.default_sub_level')
+            revision=$(echo "$config" | jq -c '.revisions["'$sub_level'"]')
+            asb_date=$(echo "$revision" | jq -r '.asb_date')
+            r_version=$(echo "$revision" | jq -r '.default_r')
+            r_suffix=$([ "$r_version" != "none" ] && echo "_$r_version" || echo '')
+            clang_version=$(echo "$config" | jq -r '.default_clang')
+            rust=$(echo "$config" | jq -r '.rust')
+            [ "$rust" = "true" ] && rust_version=$(echo "$config" | jq -r '.default_rust') || rust_version=""
+            mirror_tag=$(echo "$config" | jq -r '.mirror_tag')
+            anykernel_branch=$(echo "$config" | jq -r '.anykernel_branch')
+            google_ref=$([ "$r_version" = "none" ] && echo "heads" || echo "tags")
+            if [ "${{ inputs.source_mirror }}" = "google" ]; then
+              source_url="https://android.googlesource.com/kernel/common/+archive/refs/$google_ref"
+              mirror_name="Google"
+            else
+              source_url="https://github.com/MidoriKSU/dami-kernel-build/releases/download/$mirror_tag"
+              mirror_name="GitHub"
+            fi
+
+            jq -n \
+              --arg kv "$kv" \
+              --arg android_version "$android_version" \
+              --arg sub_level "$sub_level" \
+              --arg asb_date "$asb_date" \
+              --arg r_version "$r_version" \
+              --arg r_suffix "$r_suffix" \
+              --arg clang_version "$clang_version" \
+              --arg rust_version "$rust_version" \
+              --arg source_url "$source_url" \
+              --arg mirror_name "$mirror_name" \
+              --arg anykernel_branch "$anykernel_branch" \
+              '{kernel_version:$kv,android_version:$android_version,sub_level:$sub_level,asb_date:$asb_date,r_version:$r_version,r_suffix:$r_suffix,clang_version:$clang_version,rust_version:$rust_version,source_base_url:$source_url,mirror_name:$mirror_name,anykernel_branch:$anykernel_branch}' >> /tmp/metadata.json
+
+            add_variant() {
+              local v=$1 has_susfs=$2
+              local ds_list="false"
+              [ "${{ inputs.use_droidspaces }}" = "true" ] && ds_list="true"
+              local sus_list="false"
+              [ "$has_susfs" = "true" ] && [ "${{ inputs.enable_susfs }}" = "true" ] && sus_list="true"
+              [ "$ds_list" = "false" ] && [ "$sus_list" = "false" ] && { ds_list="false"; sus_list="false"; }
+              for ds in $ds_list; do
+                for sus in $sus_list; do
+                  matrix=$(echo "$matrix" | jq -c --arg kv "$kv" --arg variant "$v" --argjson ds "$ds" --argjson sus "$sus" '.include += [{"kernel_version":$kv,"variant":$variant,"droidspaces":$ds,"susfs":$sus}]')
+                done
               done
-            done
-          }
+            }
 
-          VARIANT="${{ inputs.ksu_variant }}"
-          MATRIX='{"include":[]}'
-          [[ "$VARIANT" =~ ^(all|MidoriSU)$ ]] && add_variants MidoriSU true
-          [[ "$VARIANT" =~ ^(all|MidoriXX)$ ]] && add_variants MidoriXX false
-          echo "build_matrix=$MATRIX" >> $GITHUB_OUTPUT
+            [[ "$variant" =~ ^(all|MidoriSU)$ ]] && add_variant MidoriSU true
+            [[ "$variant" =~ ^(all|MidoriXX)$ ]] && add_variant MidoriXX false
+            [[ "$variant" =~ ^(all|MidoriRE)$ ]] && add_variant MidoriRE true
+          done < /tmp/kvs.txt
 
-      - id: parse_config
-        name: Validate and resolve kernel config
-        run: |
-          SUB_LEVEL="${{ inputs.sub_level }}"
-          INPUT_R="${{ inputs.r_version }}"
-          CONFIG_FILE=".github/config/kernel_versions.json"
-          CONFIG=$(jq -c '.["'$SUB_LEVEL'"]' "$CONFIG_FILE")
-          [ "$CONFIG" == "null" ] && { echo "::error::Sublevel $SUB_LEVEL is not defined in $CONFIG_FILE!"; exit 1; }
-          ASB_DATE=$(echo "$CONFIG" | jq -r '.asb_date')
-          DEFAULT_R=$(echo "$CONFIG" | jq -r '.default_r')
-          SUPPORTED=$(echo "$CONFIG" | jq -r '.supported_r | index("'$INPUT_R'")')
-          if [ "$SUPPORTED" != "null" ]; then
-            FINAL_R="$INPUT_R"
-          else
-            echo "::warning::Revision '$INPUT_R' not supported for Sublevel $SUB_LEVEL. Fallback to '$DEFAULT_R'."
-            FINAL_R="$DEFAULT_R"
-          fi
-          echo "asb_date=$ASB_DATE" >> $GITHUB_OUTPUT
-          echo "r_version=$FINAL_R" >> $GITHUB_OUTPUT
+          echo "metadata=$(jq -sc '.' /tmp/metadata.json)" >> $GITHUB_OUTPUT
+          echo "build_matrix=$matrix" >> $GITHUB_OUTPUT
 
   build:
-    name: "${{ matrix.variant }} (DS: ${{ matrix.droidspaces }}${{ matrix.susfs && format(' SUSFS: {0}', matrix.susfs) || '' }})"
+    name: "${{ matrix.kernel_version }} - ${{ matrix.variant }} (DS: ${{ matrix.droidspaces }}${{ matrix.susfs && format(' SUSFS: {0}', matrix.susfs) || '' }})"
     needs: setup
     if: needs.setup.outputs.build_matrix != '{"include":[]}'
     strategy:
       matrix: ${{ fromJson(needs.setup.outputs.build_matrix) }}
     uses: ./.github/workflows/build-kernel.yml
     with:
+      kernel_version: ${{ matrix.kernel_version }}
       variant: ${{ matrix.variant }}
-      source_mirror: ${{ inputs.source_mirror }}
-      sub_level: ${{ inputs.sub_level }}
-      asb_date: ${{ needs.setup.outputs.asb_date }}
-      r_version: ${{ needs.setup.outputs.r_version }}
-      use_ccache: ${{ inputs.use_ccache }}
       use_droidspaces: ${{ matrix.droidspaces }}
       use_susfs: ${{ matrix.susfs }}
+      source_mirror: ${{ inputs.source_mirror }}
+      use_ccache: ${{ inputs.use_ccache }}
       susfs_commit: ${{ inputs.susfs_commit }}
       build_ebpf: ${{ inputs.build_scene_hider }}
       kernel_localversion: ${{ inputs.kernel_localversion }}
@@ -220,16 +234,21 @@ jobs:
       build_timestamp: ${{ inputs.build_timestamp }}
       build_user: ${{ inputs.build_user }}
       build_host: ${{ inputs.build_host }}
-      clang_version: ${{ inputs.clang_version }}
+      midorire_branch: ${{ inputs.midorire_branch }}
       midorixx_branch: ${{ inputs.midorixx_branch }}
       hook_mode: ${{ inputs.hook_mode }}
       midorixx_tag: ${{ inputs.midorixx_tag }}
 
   build_scene_hider:
-    name: "Scene Port Hider (eBPF)"
+    name: "eBPF ${{ matrix.kernel_version }}"
     needs: [setup]
     if: always() && inputs.build_scene_hider && needs.setup.result == 'success'
+    strategy:
+      matrix:
+        kernel_version: ${{ fromJson(needs.setup.outputs.kernel_versions) }}
     uses: ./.github/workflows/build-ebpf.yml
+    with:
+      kernel_version: ${{ matrix.kernel_version }}
 
   release:
     needs: [setup, build, build_scene_hider]
@@ -239,124 +258,121 @@ jobs:
       needs.setup.result == 'success' &&
       needs.build.result == 'success' &&
       (needs.build_scene_hider.result == 'success' || needs.build_scene_hider.result == 'skipped')
+    strategy:
+      matrix:
+        kv: ${{ fromJson(needs.setup.outputs.kernel_versions) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
+      - name: Load metadata for ${{ matrix.kv }}
+        id: meta
+        run: |
+          echo '${{ needs.setup.outputs.metadata }}' | jq -r '.[] | select(.kernel_version=="${{ matrix.kv }}")' > /tmp/meta.json
+          while IFS='=' read -r key value; do echo "$key=$value" >> $GITHUB_OUTPUT; done < <(jq -r 'to_entries[] | "\(.key)=\(.value)"' /tmp/meta.json)
+
       - uses: actions/download-artifact@v8
         with:
-          pattern: 'commit-info-*'
+          pattern: 'commit-info-${{ matrix.kv }}-*'
           path: commit_info
           merge-multiple: true
 
       - uses: actions/download-artifact@v8
         with:
-          pattern: 'Kernel-*'
+          pattern: 'Kernel-${{ matrix.kv }}-*'
           path: release_zips
           merge-multiple: true
 
       - uses: actions/download-artifact@v8
         if: inputs.build_scene_hider == true
         with:
-          name: ScenePortHider-eBPF
+          name: ScenePortHider-eBPF-${{ matrix.kv }}
           path: release_zips
         continue-on-error: true
 
       - name: Check eBPF artifact
-        id: check_ebpf
         run: |
-          if ls release_zips/ScenePortHider-eBPF*.zip 2>/dev/null; then
-            echo "ebpf_available=true" >> $GITHUB_OUTPUT
-          else
-            echo "ebpf_available=false" >> $GITHUB_OUTPUT
-            echo "::warning::eBPF artifact not available, continuing without it"
-          fi
-
-      - name: Read Commit Info
-        id: ksu_info
-        run: |
-          VARIANT="${{ inputs.ksu_variant }}"
-          short_sha() { cut -c1-7 "$1"; }
-          out() { echo "$1" >> $GITHUB_OUTPUT; }
-          ksu_line() {
-            local TAG=$1 REPO=$2 FILE=$3
-            [ -f "$FILE" ] && [[ "$VARIANT" =~ ^(all|$TAG)$ ]] || return
-            out "${TAG,,}=- **$TAG**: [\`$(short_sha "$FILE")\`](https://github.com/$REPO/commit/$(cat "$FILE")) \`$(cat "${FILE%_commit}_date")\`"
-          }
-          susfs_block() {
-            local TAG=$1
-            local CF="commit_info/${TAG}_susfs_commit"
-            [ -f "$CF" ] || return
-            SHA=$(cat "$CF")
-            out "${TAG}_susfs_commit=\`$(short_sha "$CF")\`"
-            out "${TAG}_susfs_url=https://gitlab.com/simonpunk/susfs4ksu/-/commit/$SHA"
-            out "${TAG}_susfs_date=\`$(cat commit_info/${TAG}_susfs_date)\`"
-          }
-          ksu_line MidoriSU midori01/KernelSU commit_info/midorisu_ksu_commit && {
-            out "driver_version=$((30000 + $(cat commit_info/ksu_commit_count)))"
-            susfs_block midorisu
-          }
-          ksu_line MidoriXX "$(cat commit_info/midorixx_ksu_repo 2>/dev/null)" commit_info/midorixx_ksu_commit
-
-      - name: Download MidoriSU Manager APK
-        id: download_midorisu_apk
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download --repo midori01/KernelSU --pattern "*.apk" --dir release_zips 2>/dev/null || echo "::warning::Failed to download MidoriSU APK"
-          APK=$(ls release_zips/*.apk 2>/dev/null | head -n 1)
-          if [ -n "$APK" ]; then
-            echo "midorisu_apk_filename=$(basename "$APK")" >> $GITHUB_OUTPUT
-            echo "ksud_version=$(basename "$APK" | grep -oP '\d+(?=-release\.apk$)' || echo 'unknown')" >> $GITHUB_OUTPUT
-          else
-            echo "midorisu_apk_filename=NOT_FOUND" >> $GITHUB_OUTPUT
-            echo "ksud_version=unknown" >> $GITHUB_OUTPUT
-          fi
+          ebpf=$(find ${{ github.workspace }}/release_zips -maxdepth 1 -name 'ScenePortHider-eBPF*.zip' 2>/dev/null | head -n 1)
+          echo "EBPF_FILE=$(basename "$ebpf" 2>/dev/null)" >> $GITHUB_ENV
 
       - name: Download KSU Toolkit Module
-        id: download_toolkit
         run: |
-          echo "toolkit_filename=NOT_AVAILABLE" >> $GITHUB_OUTPUT
-          PREVIEW_URL="https://nightly.link/backslashxx/ksu_toolkit/workflows/module/master?preview"
-          DOWNLOAD_URL=$(curl -sL "$PREVIEW_URL" | grep -oP 'https://nightly\.link/backslashxx/ksu_toolkit/workflows/module/master/ksu_toolkit-\d+\.zip' | head -n 1)
-          if [ -z "$DOWNLOAD_URL" ]; then
-            echo "::warning::Failed to extract KSU Toolkit download link, skipping..."
-            exit 0
+          toolkit=""
+          url=$(curl -sL "https://nightly.link/backslashxx/ksu_toolkit/workflows/module/master?preview" | grep -oP 'https://nightly\.link/backslashxx/ksu_toolkit/workflows/module/master/ksu_toolkit-\d+\.zip' | head -n 1)
+          if [ -n "$url" ]; then
+            toolkit=$(basename "$url")
+            curl --fail -L -o "${{ github.workspace }}/release_zips/${toolkit}" "$url" || toolkit=""
           fi
-          TOOLKIT_FILENAME=$(basename "$DOWNLOAD_URL")
-          if curl --fail -L -o "release_zips/${TOOLKIT_FILENAME}" "$DOWNLOAD_URL"; then
-            echo "toolkit_filename=$TOOLKIT_FILENAME" >> $GITHUB_OUTPUT
-            echo "::notice::KSU Toolkit downloaded successfully: $TOOLKIT_FILENAME"
-          else
-            echo "::warning::Failed to download KSU Toolkit"
-          fi
+          echo "TOOLKIT_FILE=$toolkit" >> $GITHUB_ENV
 
       - name: Download SUSFS Module
         if: inputs.enable_susfs == true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download --repo sidex15/susfs4ksu-module --pattern "*.zip" --dir release_zips 2>/dev/null || echo "::warning::Failed to download SUSFS module"
-          ls release_zips/*.zip 2>/dev/null || echo "::warning::No zip files found in release_zips"
+          gh release download --repo sidex15/susfs4ksu-module --pattern "*.zip" --dir release_zips 2>/dev/null || true
+
+      - name: Download MidoriSU Manager APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo midori01/KernelSU --pattern "*.apk" --dir release_zips 2>/dev/null || true
+          apk=$(ls release_zips/*.apk 2>/dev/null | head -n 1)
+          echo "MIDORISU_APK=$(basename "$apk" 2>/dev/null)" >> $GITHUB_ENV
+          echo "KSUD_VERSION=$(echo "$apk" | grep -oP '\d+(?=-release\.apk$)' || echo "unknown")" >> $GITHUB_ENV
+
+      - name: Download MidoriRE Manager APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo midori01/ReSukiSU --pattern "*.apk" --dir release_zips 2>/dev/null || true
+          apk=$(ls release_zips/*.apk 2>/dev/null | head -n 1)
+          echo "MIDORIRE_APK=$(basename "$apk" 2>/dev/null)" >> $GITHUB_ENV
+
+      - name: Read Commit Info
+        id: ksu_info
+        run: |
+          variant="${{ inputs.ksu_variant }}"
+          short_sha() { cut -c1-7 "$1"; }
+          out() { echo "$1" >> $GITHUB_OUTPUT; }
+          ksu_line() {
+            local tag=$1 repo=$2 file=$3
+            [ -f "$file" ] && [[ "$variant" =~ ^(all|$tag)$ ]] || return
+            out "${tag,,}=- **$tag**: [\`$(short_sha "$file")\`](https://github.com/$repo/commit/$(cat "$file")) \`$(cat "${file%_commit}_date")\`"
+          }
+          if [ -f "commit_info/susfs_commit" ]; then
+            sha=$(cat commit_info/susfs_commit)
+            out "susfs_commit=\`$(short_sha commit_info/susfs_commit)\`"
+            out "susfs_url=https://gitlab.com/simonpunk/susfs4ksu/-/commit/$sha"
+            out "susfs_date=\`$(cat commit_info/susfs_date)\`"
+          fi
+          ksu_line MidoriSU midori01/KernelSU commit_info/midorisu_ksu_commit && {
+            out "driver_version=$((30000 + $(cat commit_info/ksu_commit_count)))"
+          }
+          ksu_line MidoriXX "$(cat commit_info/midorixx_ksu_repo 2>/dev/null)" commit_info/midorixx_ksu_commit
+          ksu_line MidoriRE "$(cat commit_info/midorire_ksu_repo 2>/dev/null)" commit_info/midorire_ksu_commit
 
       - name: Publish Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: "${{ needs.setup.outputs.release_tag }}"
-          name: "Midori Kernel (${{ needs.setup.outputs.release_tag }})"
+          tag_name: "${{ needs.setup.outputs.release_tag }}-${{ matrix.kv }}"
+          name: "Midori Kernel ${{ matrix.kv }} (${{ needs.setup.outputs.release_tag }})"
           body: |
-            - **Kernel Source**: [`${{ needs.setup.outputs.mirror_name }}`](${{ needs.setup.outputs.source_base_url }}/android15-6.6-${{ needs.setup.outputs.asb_date }}${{ needs.setup.outputs.r_suffix }}.tar.gz) `android15-6.6.${{ inputs.sub_level }}${{ needs.setup.outputs.r_suffix }}`
+            - **Kernel Source**: [`${{ steps.meta.outputs.mirror_name }}`](${{ steps.meta.outputs.source_base_url }}/${{ steps.meta.outputs.android_version }}-${{ matrix.kv }}-${{ steps.meta.outputs.asb_date }}${{ steps.meta.outputs.r_suffix }}.tar.gz) `${{ steps.meta.outputs.android_version }}-${{ matrix.kv }}.${{ steps.meta.outputs.sub_level }}${{ steps.meta.outputs.r_suffix }}`
             ${{ steps.ksu_info.outputs.midorisu }}
             ${{ steps.ksu_info.outputs.midorixx }}
-            ${{ steps.ksu_info.outputs.midorisu_susfs_url && format('- **SUSFS (MidoriSU)**: [{0}]({1}) {2}', steps.ksu_info.outputs.midorisu_susfs_commit, steps.ksu_info.outputs.midorisu_susfs_url, steps.ksu_info.outputs.midorisu_susfs_date) || '' }}
-            - **KSU Driver**: `${{ steps.ksu_info.outputs.driver_version }}`　**KSUD Version**: `${{ steps.download_midorisu_apk.outputs.ksud_version }}`
-            - **Manager**: `${{ steps.download_midorisu_apk.outputs.midorisu_apk_filename }}`
-            - **Kernel Name (Spoofed)**: `6.6.${{ inputs.sub_level }}${{ inputs.kernel_localversion }}`
+            ${{ steps.ksu_info.outputs.midorire }}
+            ${{ steps.ksu_info.outputs.susfs_url && format('- **SUSFS**: [{0}]({1}) {2}', steps.ksu_info.outputs.susfs_commit, steps.ksu_info.outputs.susfs_url, steps.ksu_info.outputs.susfs_date) || '' }}
+            - **KSU Driver**: `${{ steps.ksu_info.outputs.driver_version }}`　**KSUD Version**: `${{ env.KSUD_VERSION }}`
+            - **Manager 1**: `${{ env.MIDORISU_APK }}`
+            - **Manager 2**: `${{ env.MIDORIRE_APK }}`
+            - **Compiler**: `${{ steps.meta.outputs.clang_version }}`${{ steps.meta.outputs.rust_version && format('　**Rust**: `{0}`', steps.meta.outputs.rust_version) || '' }}
+            - **Kernel Name (Spoofed)**: `${{ matrix.kv }}.${{ steps.meta.outputs.sub_level }}${{ inputs.kernel_localversion }}`
             - **Build Time (Spoofed)**: `${{ inputs.build_timestamp }}`
             - **Builder (Spoofed)**: `${{ inputs.build_user }}@${{ inputs.build_host }}`
             - **Docker**: ${{ inputs.use_droidspaces && '✅' || '❌' }}　**TMPFS**: ✅　**BBR**: ✅　**IPSET**: ✅
-            - **eBPF (Scene Hider)**: ${{ steps.check_ebpf.outputs.ebpf_available == 'true' && '✅ `(ScenePortHider-eBPF.zip)`' || '❌ `(Build Failed)`' }}
-            - **KSU Toolkit**: ${{ steps.download_toolkit.outputs.toolkit_filename != 'NOT_AVAILABLE' && format('✅ `({0})`', steps.download_toolkit.outputs.toolkit_filename) || '❌ `(Download Failed)`' }}
+            - **eBPF**: ${{ env.EBPF_FILE && format('✅ `({0})`', env.EBPF_FILE) || '❌' }}
+            - **KSU Toolkit**: ${{ env.TOOLKIT_FILE && format('✅ `({0})`', env.TOOLKIT_FILE) || '❌' }}
             - **Ccache Speedup**: ${{ inputs.use_ccache && '✅' || '❌' }}
           files: |
             release_zips/*.zip

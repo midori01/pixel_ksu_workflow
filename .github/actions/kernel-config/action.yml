@@ -8,7 +8,7 @@ inputs:
     description: 'Path to the build.config.gki file'
     required: true
   variant:
-    description: 'KSU variant'
+    description: 'KSU variant (MidoriSU, MidoriXX, or MidoriRE)'
     required: true
   hook_mode:
     description: 'Hook mode (MidoriXX)'
@@ -83,6 +83,26 @@ runs:
         EOF
           else
             :
+          fi
+        fi
+        
+        if [ "${{ inputs.variant }}" = "MidoriRE" ]; then
+          if [ "${{ inputs.enable_susfs }}" = "true" ]; then
+            cat >> $DEFCONFIG <<-'EOF'
+        CONFIG_KSU_TOOLKIT_SUPPORT=y
+        CONFIG_KSU_SUSFS=y
+        # CONFIG_KSU_MANUAL_HOOK is not set
+        # CONFIG_KSU_TRACEPOINT_HOOK is not set
+        EOF
+          else
+            cat >> $DEFCONFIG <<-'EOF'
+        CONFIG_KSU_TOOLKIT_SUPPORT=y
+        CONFIG_KSU_MANUAL_HOOK=y
+        # CONFIG_KSU_SUSFS is not set
+        # CONFIG_KSU_TRACEPOINT_HOOK is not set
+        # CONFIG_KSU_MANUAL_HOOK_AUTO_SETUID_HOOK is not set
+        # CONFIG_KSU_MANUAL_HOOK_AUTO_INITRC_HOOK is not set
+        EOF
           fi
         fi
         

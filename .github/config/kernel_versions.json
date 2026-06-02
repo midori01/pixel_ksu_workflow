@@ -1,7 +1,33 @@
 {
-  "127": {
-    "asb_date": "2026-04",
-    "supported_r": ["r13", "none"],
-    "default_r": "r13"
+  "6.6": {
+    "android_version": "android15",
+    "default_sub_level": "127",
+    "revisions": {
+      "127": {
+        "asb_date": "2026-04",
+        "default_r": "r14",
+        "supported_r": ["r14", "r13", "none"]
+      }
+    },
+    "default_clang": "clang-r510928",
+    "rust": false,
+    "mirror_tag": "6.6",
+    "anykernel_branch": "pixel"
+  },
+  "6.12": {
+    "android_version": "android16",
+    "default_sub_level": "23",
+    "revisions": {
+      "23": {
+        "asb_date": "2025-06",
+        "default_r": "r58",
+        "supported_r": ["r58", "none"]
+      }
+    },
+    "default_clang": "clang-r536225",
+    "rust": true,
+    "default_rust": "rust-1.82.0",
+    "mirror_tag": "1.0",
+    "anykernel_branch": "xiaomi"
   }
 }
