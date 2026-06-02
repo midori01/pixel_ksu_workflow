@@ -1,4 +1,19 @@
 {
+  "6.1": {
+    "android_version": "android14",
+    "default_sub_level": "162",
+    "revisions": {
+      "162": {
+        "asb_date": "2026-03",
+        "default_r": "r14",
+        "supported_r": ["r14", "none"]
+      }
+    },
+    "default_clang": "clang-r510928",
+    "rust": false,
+    "mirror_tag": "6.1",
+    "anykernel_branch": "pixel"
+  },
   "6.6": {
     "android_version": "android15",
     "default_sub_level": "127",

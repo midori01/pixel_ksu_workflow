@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - 'all'
+          - '6.1'
           - '6.6'
           - '6.12'
       source_mirror:
@@ -144,7 +145,7 @@ jobs:
           config_file=".github/config/kernel_versions.json"
 
           if [ "${{ inputs.kernel_version }}" = "all" ]; then
-            kvs='["6.6","6.12"]'
+            kvs='["6.1","6.6","6.12"]'
           else
             kvs='["${{ inputs.kernel_version }}"]'
           fi

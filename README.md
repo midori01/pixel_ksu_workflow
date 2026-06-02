@@ -3,7 +3,7 @@
 # 🌀 GKI KSU Workflow
 
 ![Android](https://img.shields.io/badge/Android-16-3DDC84?style=for-the-badge&logo=android&logoColor=white)
-![Kernel](https://img.shields.io/badge/Kernel-GKI_6.6_|_6.12-2F363D?style=for-the-badge&logo=linux&logoColor=white)
+![Kernel](https://img.shields.io/badge/Kernel-GKI_6.1_~_6.12-2F363D?style=for-the-badge&logo=linux&logoColor=white)
 ![Architecture](https://img.shields.io/badge/Arch-arm64-blue?style=for-the-badge)
 
 *Automated GitHub Actions CI/CD pipeline for compiling and distributing GKI kernels.*
@@ -42,7 +42,7 @@ All kernel version-specific settings are centralized in [`.github/config/kernel_
 > \* **MidoriXX Hook Strategy:** Runtime-configurable via `hook_mode`. Supports `manual` (default) or `hookless`.
 
 > [!TIP]
-> **Matrix Build Orchestration:** The matrix always produces exactly **1 artifact per variant** — the enabled features (Droidspaces and/or SUSFS) are applied to that single artifact. With all 3 variants selected, this yields **3 builds per kernel version**. Choosing `all` from the `kernel_version` dropdown compiles both 6.6 and 6.12 in parallel for a total of **6 concurrent jobs**.
+> **Matrix Build Orchestration:** The matrix always produces exactly **1 artifact per variant** — the enabled features (Droidspaces and/or SUSFS) are applied to that single artifact. With all 3 variants selected, this yields **3 builds per kernel version**. Choosing `all` from the `kernel_version` dropdown compiles 6.1, 6.6 and 6.12 in parallel for a total of **9 concurrent jobs**.
 
 ---
 
@@ -61,7 +61,7 @@ All kernel version-specific settings are centralized in [`.github/config/kernel_
 
 | Feature | Description |
 | :--- | :--- |
-| **Kernel Version** | Select `6.6`, `6.12`, or `all` to compile one or both kernel versions. Sub-level, revision, compiler, and Rust settings are auto-resolved from the centralized config. |
+| **Kernel Version** | Select `6.1`, `6.6`, `6.12`, or `all` to compile one or all kernel versions. Sub-level, revision, compiler, and Rust settings are auto-resolved from the centralized config. |
 | **Source Mirror** | Choose between Google's official AOSP mirror or a Midori-hosted mirror for kernel source and toolchain downloads. |
 | **eBPF Scene Hider** | Optionally compiles and packages [Scene Port Hider by eBPF](https://github.com/Andrea-lyz/Scene-Port-Hider-by-eBPF) alongside kernel artifacts. Spins up as soon as the first kernel build completes, independent of the remaining matrix jobs. |
 | **SUSFS Module** | When SUSFS is enabled, automatically fetches the latest [susfs4ksu-module](https://github.com/sidex15/susfs4ksu-module) and attaches it to the release. A single `susfs_commit` input controls both MidoriSU and MidoriRE SUSFS versions. |

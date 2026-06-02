@@ -194,7 +194,11 @@ jobs:
           cp "$SUSFS_DIR/kernel_patches/fs/susfs.c" fs/
           cp "$SUSFS_DIR/kernel_patches/include/linux/susfs.h" include/linux/
           cp "$SUSFS_DIR/kernel_patches/include/linux/susfs_def.h" include/linux/
-          patch -p1 < "$SUSFS_DIR/kernel_patches/50_add_susfs_in_gki-${{ steps.cfg.outputs.kmi_version }}.patch"
+          if [ "${{ inputs.kernel_version }}" = "6.1" ]; then
+            patch -p1 < "${{ github.workspace }}/.github/patches/${{ steps.cfg.outputs.kmi_version }}/50_add_susfs_in_gki-${{ steps.cfg.outputs.kmi_version }}.patch"
+          else
+            patch -p1 < "$SUSFS_DIR/kernel_patches/50_add_susfs_in_gki-${{ steps.cfg.outputs.kmi_version }}.patch"
+          fi
           if [ "${{ inputs.variant }}" = "MidoriSU" ]; then
             patch -p1 -d KernelSU < "${{ github.workspace }}/.github/patches/10_enable_susfs_for_ksu.patch"
           fi

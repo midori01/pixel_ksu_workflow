@@ -37,13 +37,13 @@ jobs:
               sleep 3
               continue
             fi
-            success=$(echo "$jobs" | jq -r '.jobs[] | select(.name | startswith("'"$kv"'")) | select(.status=="completed" and .conclusion=="success") | .name' 2>/dev/null || true)
+            success=$(echo "$jobs" | jq -r '.jobs[] | select(.name | startswith("'"$kv"' ")) | select(.status=="completed" and .conclusion=="success") | .name' 2>/dev/null || true)
             if [ -n "$success" ]; then
               echo "$kv kernel build done"
               break
             fi
-            failed=$(echo "$jobs" | jq -r '.jobs[] | select(.name | startswith("'"$kv"'")) | select(.status=="completed" and .conclusion!="success" and .conclusion!="skipped") | .name' 2>/dev/null || true)
-            total=$(echo "$jobs" | jq -r '.jobs[] | select(.name | startswith("'"$kv"'")) | .name' 2>/dev/null || true)
+            failed=$(echo "$jobs" | jq -r '.jobs[] | select(.name | startswith("'"$kv"' ")) | select(.status=="completed" and .conclusion!="success" and .conclusion!="skipped") | .name' 2>/dev/null || true)
+            total=$(echo "$jobs" | jq -r '.jobs[] | select(.name | startswith("'"$kv"' ")) | .name' 2>/dev/null || true)
             failed_n=$(echo "$failed" | sed '/^$/d' | wc -l)
             total_n=$(echo "$total" | sed '/^$/d' | wc -l)
             ok_n=$(echo "$success" | sed '/^$/d' | wc -l)

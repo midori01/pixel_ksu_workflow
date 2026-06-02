@@ -1,0 +1,169 @@
+From: midori01 <lv@lvlv.lv>
+Date: Tue, 2 Jun 2026 10:32:20 +0900
+Subject: [PATCH] scope-minimized manual hooks v2.2 for android14-6.1
+
+---
+ fs/exec.c       | 12 ++++++++++++
+ fs/open.c       |  9 +++++++++
+ fs/stat.c       | 25 +++++++++++++++++++++++++
+ kernel/reboot.c |  8 ++++++++
+ 4 files changed, 54 insertions(+)
+
+diff --git a/fs/exec.c b/fs/exec.c
+index 6999d609d69c..26b14ac9ec1d 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -2048,12 +2048,21 @@ int kernel_execve(const char *kernel_filename,
+ 	return retval;
+ }
+ 
++#ifdef CONFIG_KSU
++__attribute__((hot))
++extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
++				void *argv, void *envp, int *flags);
++#endif
++
+ static int do_execve(struct filename *filename,
+ 	const char __user *const __user *__argv,
+ 	const char __user *const __user *__envp)
+ {
+ 	struct user_arg_ptr argv = { .ptr.native = __argv };
+ 	struct user_arg_ptr envp = { .ptr.native = __envp };
++#ifdef CONFIG_KSU
++	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+@@ -2081,6 +2090,9 @@ static int compat_do_execve(struct filename *filename,
+ 		.is_compat = true,
+ 		.ptr.compat = __envp,
+ 	};
++#ifdef CONFIG_KSU // 32-bit ksud and 32-on-64 support
++	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
++#endif
+ 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
+ }
+ 
+diff --git a/fs/open.c b/fs/open.c
+index 82d10b7a57da..54a0b6189867 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -490,8 +490,17 @@ static long do_faccessat(int dfd, const char __user *filename, int mode, int fla
+ 	return res;
+ }
+ 
++#ifdef CONFIG_KSU
++__attribute__((hot)) 
++extern int ksu_handle_faccessat(int *dfd, const char __user **filename_user,
++				int *mode, int *flags);
++#endif
++
+ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ {
++#ifdef CONFIG_KSU
++	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
++#endif
+ 	return do_faccessat(dfd, filename, mode, 0);
+ }
+ 
+diff --git a/fs/stat.c b/fs/stat.c
+index ef50573c72a2..23b95585817e 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -427,6 +427,12 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
+ 	return cp_new_stat(&stat, statbuf);
+ }
+ 
++#ifdef CONFIG_KSU
++__attribute__((hot)) 
++extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
++				int *flags);
++#endif
++
+ #if !defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_SYS_NEWFSTATAT)
+ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 		struct stat __user *, statbuf, int, flag)
+@@ -434,6 +440,9 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU
++	ksu_handle_stat(&dfd, &filename, &flag);
++#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+@@ -441,6 +450,13 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
+ }
+ #endif
+ 
++#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_KPROBES_KSUD)
++extern void ksu_handle_newfstat_ret(unsigned int *fd, struct stat __user **statbuf_ptr);
++#if defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_COMPAT_STAT64)
++extern void ksu_handle_fstat64_ret(unsigned long *fd, struct stat64 __user **statbuf_ptr); // for 32-bit
++#endif
++#endif
++
+ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
+ {
+ 	struct kstat stat;
+@@ -449,6 +465,9 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
+ 	if (!error)
+ 		error = cp_new_stat(&stat, statbuf);
+ 
++#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_KPROBES_KSUD)
++	ksu_handle_newfstat_ret(&fd, &statbuf);
++#endif
+ 	return error;
+ }
+ #endif
+@@ -576,6 +595,9 @@ SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+ 	if (!error)
+ 		error = cp_new_stat64(&stat, statbuf);
+ 
++#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_KPROBES_KSUD) // for 32-bit
++	ksu_handle_fstat64_ret(&fd, &statbuf);
++#endif
+ 	return error;
+ }
+ 
+@@ -585,6 +607,9 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
+ 	struct kstat stat;
+ 	int error;
+ 
++#ifdef CONFIG_KSU // 32-bit su
++	ksu_handle_stat(&dfd, &filename, &flag); 
++#endif
+ 	error = vfs_fstatat(dfd, filename, &stat, flag);
+ 	if (error)
+ 		return error;
+diff --git a/kernel/reboot.c b/kernel/reboot.c
+index 344ceaf5ed13..a25394bc7016 100644
+--- a/kernel/reboot.c
++++ b/kernel/reboot.c
+@@ -701,6 +701,11 @@ DEFINE_MUTEX(system_transition_mutex);
+  *
+  * reboot doesn't sync: do that yourself before calling this.
+  */
++
++#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_KPROBES_KSUD)
++extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
++#endif
++
+ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+ 		void __user *, arg)
+ {
+@@ -708,6 +713,9 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
+ 	char buffer[256];
+ 	int ret = 0;
+ 
++#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_KPROBES_KSUD)
++	ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
++#endif
+ 	/* We only trust the superuser with rebooting the system. */
+ 	if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))
+ 		return -EPERM;
+-- 
+2.54.0
+
