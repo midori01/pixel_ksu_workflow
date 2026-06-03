@@ -1,5 +1,5 @@
-From: midori01 <midori01@users.noreply.github.com>
-Date: Tue, 26 May 2026 23:51:08 +0900
+From: midori01 <lv@lvlv.lv>
+Date: Thu, 4 Jun 2026 13:49:03 +0900
 Subject: [PATCH] KowSU to MidoriSU
 
 ---
@@ -638,10 +638,10 @@ index 3aa34b2c..bad2884f 100644
      val state = AboutUiState(
          title = stringResource(R.string.about),
 diff --git a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt
-index 917818a0..739aeb65 100644
+index 251ce6e3..2ee9988d 100644
 --- a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt
 +++ b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt
-@@ -96,11 +96,13 @@ fun HomePagerMaterial(
+@@ -97,11 +97,13 @@ fun HomePagerMaterial(
                  state = state,
                  actions = actions,
              )
@@ -724,7 +724,7 @@ index 585830ef..f1ee7fbe 100644
 +    </group>
 +</vector>
 diff --git a/manager/app/src/main/res/values/strings.xml b/manager/app/src/main/res/values/strings.xml
-index 673ff6da..55429e15 100644
+index dd72df42..b3b1fbb9 100644
 --- a/manager/app/src/main/res/values/strings.xml
 +++ b/manager/app/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -736,7 +736,7 @@ index 673ff6da..55429e15 100644
      <string name="home">Home</string>
      <string name="home_not_installed">Not installed</string>
      <string name="home_click_to_install">Tap to install</string>
-@@ -116,6 +116,8 @@
+@@ -117,6 +117,8 @@
      <string name="module_update">Update</string>
      <string name="module_downloading">Downloading module: %s</string>
      <string name="module_start_downloading">Start downloading: %s</string>

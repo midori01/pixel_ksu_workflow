@@ -17,7 +17,7 @@ on:
       source_mirror:
         description: 'Kernel Source'
         required: true
-        default: 'google'
+        default: 'midori'
         type: choice
         options:
           - google
@@ -195,16 +195,11 @@ jobs:
 
             add_variant() {
               local v=$1 has_susfs=$2
-              local ds_list="false"
-              [ "${{ inputs.use_droidspaces }}" = "true" ] && ds_list="true"
-              local sus_list="false"
-              [ "$has_susfs" = "true" ] && [ "${{ inputs.enable_susfs }}" = "true" ] && sus_list="true"
-              [ "$ds_list" = "false" ] && [ "$sus_list" = "false" ] && { ds_list="false"; sus_list="false"; }
-              for ds in $ds_list; do
-                for sus in $sus_list; do
-                  matrix=$(echo "$matrix" | jq -c --arg kv "$kv" --arg variant "$v" --argjson ds "$ds" --argjson sus "$sus" '.include += [{"kernel_version":$kv,"variant":$variant,"droidspaces":$ds,"susfs":$sus}]')
-                done
-              done
+              local ds="false"
+              local sus="false"
+              [ "${{ inputs.use_droidspaces }}" = "true" ] && ds="true"
+              [ "$has_susfs" = "true" ] && [ "${{ inputs.enable_susfs }}" = "true" ] && sus="true"
+              matrix=$(echo "$matrix" | jq -c --arg kv "$kv" --arg variant "$v" --argjson ds "$ds" --argjson sus "$sus" '.include += [{"kernel_version":$kv,"variant":$variant,"droidspaces":$ds,"susfs":$sus}]')
             }
 
             [[ "$variant" =~ ^(all|MidoriSU)$ ]] && add_variant MidoriSU true
@@ -216,7 +211,7 @@ jobs:
           echo "build_matrix=$matrix" >> $GITHUB_OUTPUT
 
   build:
-    name: "${{ matrix.kernel_version }} - ${{ matrix.variant }} (DS: ${{ matrix.droidspaces }}${{ matrix.susfs && format(' SUSFS: {0}', matrix.susfs) || '' }})"
+    name: "${{ matrix.kernel_version }} - ${{ matrix.variant }}${{ matrix.susfs && (matrix.droidspaces && ' (SUSFS DS)' || ' (SUSFS)') || (matrix.droidspaces && ' (DS)' || '') }}"
     needs: setup
     if: needs.setup.outputs.build_matrix != '{"include":[]}'
     strategy:

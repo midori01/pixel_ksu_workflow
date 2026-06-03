@@ -155,9 +155,7 @@ jobs:
           aria2c -s16 -x16 -k1M "$KERNEL_BASE_URL/$KERNEL_TAR" -o common.tar.gz && mkdir -p common && tar -xzf common.tar.gz -C common &
           wait
           sed -i 's/ -dirty//g' common/scripts/setlocalversion
-          if [ "${{ inputs.kernel_version }}" == "6.1" ]; then
-            rm common/android/abi_gki_protected_exports_* || true
-          fi
+          [ "${{ inputs.kernel_version }}" = "6.1" ] && rm -f common/android/abi_gki_protected_exports_* || true
 
       - name: Setup KernelSU
         working-directory: kernel_workspace/common
@@ -184,7 +182,7 @@ jobs:
           grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
 
       - name: Setup SUSFS
-        if: (inputs.variant == 'MidoriSU' || inputs.variant == 'MidoriRE' || inputs.variant == 'MidoriXX') && inputs.use_susfs
+        if: inputs.use_susfs
         working-directory: kernel_workspace/common
         run: |
           SUSFS_DIR="${{ github.workspace }}/susfs4ksu"
@@ -194,9 +192,8 @@ jobs:
           else
             git clone --depth=1 --branch="gki-${{ steps.cfg.outputs.kmi_version }}" https://gitlab.com/simonpunk/susfs4ksu "$SUSFS_DIR"
           fi
-          cp "$SUSFS_DIR/kernel_patches/fs/susfs.c" fs/
-          cp "$SUSFS_DIR/kernel_patches/include/linux/susfs.h" include/linux/
-          cp "$SUSFS_DIR/kernel_patches/include/linux/susfs_def.h" include/linux/
+          cp "$SUSFS_DIR"/kernel_patches/fs/* fs/
+          cp "$SUSFS_DIR"/kernel_patches/include/linux/* include/linux/
           case "${{ inputs.variant }}" in
             MidoriSU)
               patch -p1 < "${{ github.workspace }}/.github/patches/${{ steps.cfg.outputs.kmi_version }}/50_add_susfs_in_gki-${{ steps.cfg.outputs.kmi_version }}.patch"

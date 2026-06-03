@@ -1,34 +1,29 @@
 From: midori01 <lv@lvlv.lv>
-Date: Wed, 3 Jun 2026 17:00:00 +0900
-Subject: [PATCH] de-inlined SUSFS hooks for android15-6.6-lts
+Date: Thu, 4 Jun 2026 11:00:00 +0900
+Subject: [PATCH] De-inlined SUSFS hooks for android15-6.6-lts
 
 ---
- drivers/input/input.c     |   3 +
- fs/Makefile               |   2 +
- fs/namei.c                | 151 ++++++++++++++++++++++++
- fs/namespace.c            | 234 ++++++++++++++++++++++++++++++++++++++
- fs/notify/fdinfo.c        |  58 ++++++++++
- fs/open.c                 |  31 +++++
- fs/proc/base.c            |  24 ++++
- fs/proc/bootconfig.c      |  13 +++
- fs/proc/fd.c              |  78 +++++++++++++
- fs/proc/task_mmu.c        |  75 ++++++++++++
- fs/proc_namespace.c       |  35 ++++++
- fs/readdir.c              | 126 ++++++++++++++++++++
- fs/stat.c                 |  36 ++++++
- fs/statfs.c               |  45 ++++++++
- fs/sus_su.c               | 140 +++++++++++++++++++++++
- fs/susfs.c                |  83 +++++++++++---
- include/linux/sus_su.h    |   9 ++
- include/linux/susfs.h     |  20 ++++
- include/linux/susfs_def.h |   4 +-
- kernel/kallsyms.c         |  31 +++++
- kernel/sys.c              |   9 +-
- mm/memory.c               |  13 +++
- security/selinux/avc.c    |  21 +++-
- 23 files changed, 1219 insertions(+), 22 deletions(-)
- create mode 100755 fs/sus_su.c
- create mode 100755 include/linux/sus_su.h
+ drivers/input/input.c  |   3 +
+ fs/Makefile            |   2 +
+ fs/namei.c             | 151 ++++++++++++++++++++++++++
+ fs/namespace.c         | 234 +++++++++++++++++++++++++++++++++++++++++
+ fs/notify/fdinfo.c     |  58 ++++++++++
+ fs/open.c              |  31 ++++++
+ fs/proc/base.c         |  24 +++++
+ fs/proc/bootconfig.c   |  13 +++
+ fs/proc/fd.c           |  78 ++++++++++++++
+ fs/proc/task_mmu.c     |  75 +++++++++++++
+ fs/proc_namespace.c    |  35 ++++++
+ fs/readdir.c           | 126 ++++++++++++++++++++++
+ fs/stat.c              |  36 +++++++
+ fs/statfs.c            |  45 ++++++++
+ fs/susfs.c             |  83 +++++++++++----
+ include/linux/susfs.h  |  20 ++++
+ kernel/kallsyms.c      |  31 ++++++
+ kernel/sys.c           |   9 +-
+ mm/memory.c            |  13 +++
+ security/selinux/avc.c |  21 +++-
+ 20 files changed, 1068 insertions(+), 20 deletions(-)
 
 diff --git a/drivers/input/input.c b/drivers/input/input.c
 index 9bb1d3de723e..a86d3eb34eb7 100644
@@ -1704,154 +1699,8 @@ index 2a37f9f3dba1..b0294c384b15 100644
  
  	error = statfs_by_dentry(path->dentry, buf);
  	if (!error)
-diff --git a/fs/sus_su.c b/fs/sus_su.c
-new file mode 100755
-index 000000000000..d140468d0714
---- /dev/null
-+++ b/fs/sus_su.c
-@@ -0,0 +1,140 @@
-+#include <linux/module.h>
-+#include <linux/kernel.h>
-+#include <linux/fs.h>
-+#include <linux/uaccess.h>
-+#include <linux/cdev.h>
-+#include <linux/random.h>
-+#include <linux/cred.h>
-+#include <linux/sus_su.h>
-+
-+#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
-+extern bool susfs_is_log_enabled __read_mostly;
-+#define SUSFS_LOGI(fmt, ...) if (susfs_is_log_enabled) pr_info("susfs_sus_su:[%u][%u][%s] " fmt, current_uid().val, current->pid, __func__, ##__VA_ARGS__)
-+#define SUSFS_LOGE(fmt, ...) if (susfs_is_log_enabled) pr_err("susfs_sus_su:[%u][%u][%s]" fmt, current_uid().val, current->pid, __func__, ##__VA_ARGS__)
-+#else
-+#define SUSFS_LOGI(fmt, ...)
-+#define SUSFS_LOGE(fmt, ...)
-+#endif
-+
-+#define FIFO_SIZE 1024
-+#define MAX_DRV_NAME 255
-+
-+static int cur_maj_dev_num = -1;
-+static char fifo_buffer[FIFO_SIZE];
-+static struct cdev sus_su_cdev;
-+static const char *sus_su_token = "!@#$SU_IS_SUS$#@!-pRE6W9BKXrJr1hEKyvDq0CvWziVKbatT8yzq06fhtrEGky2tVS7Q2QTjhtMfVMGV";
-+static char rand_drv_path[MAX_DRV_NAME+1] = "/dev/";
-+static bool is_sus_su_enabled_before = false;
-+
-+extern bool susfs_is_allow_su(void);
-+extern void ksu_escape_to_root(void);
-+
-+static void gen_rand_drv_name(char *buffer, size_t min_length, size_t max_length) {
-+    const char *symbols = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-+@#:=";
-+    size_t symbols_length = strlen(symbols);
-+    size_t length, i;
-+    unsigned int rand_value;
-+
-+    // Determine the random length of the string
-+    get_random_bytes(&rand_value, sizeof(rand_value));
-+    length = min_length + (rand_value % (max_length - min_length + 1));
-+
-+    for (i = 0; i < length; ++i) {
-+        get_random_bytes(&rand_value, sizeof(rand_value));
-+        buffer[i] = symbols[rand_value % symbols_length];
-+    }
-+    buffer[length] = '\0'; // Null-terminate the string
-+}
-+
-+static int fifo_open(struct inode *inode, struct file *file) {
-+    return 0;
-+}
-+
-+static int fifo_release(struct inode *inode, struct file *file) {
-+    return 0;
-+}
-+
-+static ssize_t fifo_read(struct file *file, char __user *buf, size_t len, loff_t *offset) {
-+    return 0;
-+}
-+
-+static ssize_t fifo_write(struct file *file, const char __user *buf, size_t len, loff_t *offset) {
-+    int sus_su_token_len = strlen(sus_su_token);
-+
-+    if (!susfs_is_allow_su()) {
-+        SUSFS_LOGE("root is not allowed for uid: '%d', pid: '%d'\n", current_uid().val, current->pid);
-+        return 0;
-+    }
-+
-+    if (copy_from_user(fifo_buffer, buf, sus_su_token_len+1)) {
-+        SUSFS_LOGE("copy_from_user() failed, uid: '%d', pid: '%d'\n", current_uid().val, current->pid);
-+        return 0;
-+    }
-+
-+    if (!memcmp(fifo_buffer, sus_su_token, sus_su_token_len+1)) {
-+        SUSFS_LOGI("granting root access for uid: '%d', pid: '%d'\n", current_uid().val, current->pid);
-+        ksu_escape_to_root();
-+    } else {
-+        SUSFS_LOGI("wrong token! deny root access for uid: '%d', pid: '%d'\n", current_uid().val, current->pid);
-+    }
-+    memset(fifo_buffer, 0, FIFO_SIZE);
-+    return 0;
-+}
-+
-+static struct file_operations fops = {
-+    .owner = THIS_MODULE,
-+    .open = fifo_open,
-+    .release = fifo_release,
-+    .read = fifo_read,
-+    .write = fifo_write,
-+};
-+
-+int sus_su_fifo_init(int *maj_dev_num, char *drv_path) {
-+    if (cur_maj_dev_num > 0) {
-+        SUSFS_LOGE("'%s' is already registered\n", rand_drv_path);
-+        return -1;
-+    }
-+
-+    // generate a random driver name if it is executed for the first time
-+    if (!is_sus_su_enabled_before) {
-+        // min length 192, max length 248, just make sure max length doesn't exceeds 255
-+        gen_rand_drv_name(rand_drv_path+5, 192, 248);
-+    }
-+
-+    cur_maj_dev_num = register_chrdev(0, rand_drv_path+5, &fops);
-+    if (cur_maj_dev_num < 0) {
-+        SUSFS_LOGE("Failed to register character device\n");
-+        return -1;
-+    }
-+
-+    cdev_init(&sus_su_cdev, &fops);
-+    if (cdev_add(&sus_su_cdev, MKDEV(cur_maj_dev_num, 0), 1) < 0) {
-+        unregister_chrdev(cur_maj_dev_num, rand_drv_path+5);
-+        SUSFS_LOGE("Failed to add cdev\n");
-+        return -1;
-+    }
-+
-+    strncpy(drv_path, rand_drv_path, strlen(rand_drv_path));
-+    *maj_dev_num = cur_maj_dev_num;
-+    SUSFS_LOGI("'%s' registered with major device number %d\n", rand_drv_path, cur_maj_dev_num);
-+    
-+    if (!is_sus_su_enabled_before)
-+        is_sus_su_enabled_before = true;
-+
-+    return 0;
-+}
-+
-+int sus_su_fifo_exit(int *maj_dev_num, char *drv_path) {
-+    if (cur_maj_dev_num < 0) {
-+        SUSFS_LOGE("'%s' was already unregistered before\n", rand_drv_path);
-+        return 0;
-+    }
-+
-+    cdev_del(&sus_su_cdev);
-+    unregister_chrdev(cur_maj_dev_num, rand_drv_path+5);
-+    cur_maj_dev_num = -1;
-+    *maj_dev_num = cur_maj_dev_num;
-+    strncpy(drv_path, rand_drv_path, strlen(rand_drv_path));
-+    SUSFS_LOGI("'%s' unregistered\n", rand_drv_path);
-+    return 0;
-+}
 diff --git a/fs/susfs.c b/fs/susfs.c
-index a2a2d46bdea9..f6d069de811c 100644
+index a2a2d46bdea9..f6d069de811c 100755
 --- a/fs/susfs.c
 +++ b/fs/susfs.c
 @@ -23,10 +23,10 @@
@@ -1994,23 +1843,8 @@ index a2a2d46bdea9..f6d069de811c 100644
  	SUSFS_LOGI("susfs is initialized! version: " SUSFS_VERSION " \n");
  }
  
-diff --git a/include/linux/sus_su.h b/include/linux/sus_su.h
-new file mode 100755
-index 000000000000..98e8f3b357ac
---- /dev/null
-+++ b/include/linux/sus_su.h
-@@ -0,0 +1,9 @@
-+#ifndef __KSU_H_SUS_SU
-+#define __KSU_H_SUS_SU
-+
-+#include "../../drivers/kernelsu/core_hook.h"
-+
-+int sus_su_fifo_init(int *maj_dev_num, char *drv_path);
-+int sus_su_fifo_exit(int *maj_dev_num, char *drv_path);
-+
-+#endif
 diff --git a/include/linux/susfs.h b/include/linux/susfs.h
-index 45c0f532b02b..e6f0b6c10dfc 100644
+index 45c0f532b02b..e6f0b6c10dfc 100755
 --- a/include/linux/susfs.h
 +++ b/include/linux/susfs.h
 @@ -102,6 +102,20 @@ struct st_susfs_sus_kstat_hlist {
@@ -2047,21 +1881,6 @@ index 45c0f532b02b..e6f0b6c10dfc 100644
  /* spoof_uname */
  #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
  void susfs_set_uname(void __user **user_info);
-diff --git a/include/linux/susfs_def.h b/include/linux/susfs_def.h
-index fb55df554950..6badca030f09 100644
---- a/include/linux/susfs_def.h
-+++ b/include/linux/susfs_def.h
-@@ -43,8 +43,8 @@
- #define TRY_UMOUNT_DETACH 1 /* used by susfs_try_umount() */
- 
- #define VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT 0x80000000 /* used for mounts that are unshared by ksu process */
--#define DEFAULT_KSU_MNT_ID 2000000000 /* used for mounts created or single cloned by ksu process */
--#define DEFAULT_KSU_MNT_GROUP_ID 200000 /* used by mount->mnt_group_id */
-+#define DEFAULT_KSU_MNT_ID 500000 /* used for mounts created or single cloned by ksu process */
-+#define DEFAULT_KSU_MNT_GROUP_ID 5000 /* used by mount->mnt_group_id */
- 
- #ifndef FUSE_SUPER_MAGIC
- #define FUSE_SUPER_MAGIC 0x65735546
 diff --git a/kernel/kallsyms.c b/kernel/kallsyms.c
 index cd44e9c42753..4c6c4c74dbb4 100644
 --- a/kernel/kallsyms.c
