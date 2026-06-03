@@ -84,7 +84,7 @@ on:
         default: true
         type: boolean
       susfs_commit:
-        description: 'SUSFS Commit (Leave blank for latest, only affects MidoriSU/MidoriRE)'
+        description: 'SUSFS Commit (Leave blank for latest)'
         required: false
         default: ''
         type: string
@@ -208,7 +208,7 @@ jobs:
             }
 
             [[ "$variant" =~ ^(all|MidoriSU)$ ]] && add_variant MidoriSU true
-            [[ "$variant" =~ ^(all|MidoriXX)$ ]] && add_variant MidoriXX false
+            [[ "$variant" =~ ^(all|MidoriXX)$ ]] && add_variant MidoriXX true
             [[ "$variant" =~ ^(all|MidoriRE)$ ]] && add_variant MidoriRE true
           done < /tmp/kvs.txt
 
@@ -366,7 +366,7 @@ jobs:
             ${{ steps.ksu_info.outputs.midorixx }}
             ${{ steps.ksu_info.outputs.midorire }}
             ${{ steps.ksu_info.outputs.susfs_url && format('- **SUSFS**: [{0}]({1}) {2}', steps.ksu_info.outputs.susfs_commit, steps.ksu_info.outputs.susfs_url, steps.ksu_info.outputs.susfs_date) || '' }}
-            - **KSU Driver**: `${{ steps.ksu_info.outputs.driver_version }}`　**KSUD Version**: `${{ env.KSUD_VERSION }}`
+            - **KSU Driver**: `${{ steps.ksu_info.outputs.driver_version || env.KSUD_VERSION }}`　**KSUD Version**: `${{ env.KSUD_VERSION }}`
             - **Manager 1**: `${{ env.MIDORISU_APK }}`
             - **Manager 2**: `${{ env.MIDORIRE_APK }}`
             - **Kernel Name (Spoofed)**: `${{ matrix.kv }}.${{ steps.meta.outputs.sub_level }}${{ inputs.kernel_localversion }}`
