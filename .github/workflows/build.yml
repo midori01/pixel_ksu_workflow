@@ -32,15 +32,14 @@ on:
           - MidoriSU
           - MidoriXX
           - MidoriRE
-      midorire_branch:
-        description: 'MidoriRE Source'
+      midorisu_branch:
+        description: 'MidoriSU Source'
         required: true
-        default: 'ReSukiSU/ReSukiSU:main'
+        default: 'midori01/KernelSU:main'
         type: choice
         options:
-          - 'midori01/ReSukiSU:main'
-          - 'midori01/ReSukiSU:test'
-          - 'ReSukiSU/ReSukiSU:main'
+          - 'midori01/KernelSU:main'
+          - 'midori01/KernelSU:test'
       midorixx_branch:
         description: 'MidoriXX Source'
         required: true
@@ -50,26 +49,22 @@ on:
           - 'MidoriKSU/KernelSU:main'
           - 'backslashxx/KernelSU:master'
           - 'backslashxx/KernelSU:staging'
-      hook_mode:
-        description: "MidoriXX Hook Mode"
+      midorire_branch:
+        description: 'MidoriRE Source'
         required: true
-        default: "manual"
+        default: 'ReSukiSU/ReSukiSU:main'
         type: choice
         options:
-          - manual
-          - hookless
-      midorixx_tag:
-        description: 'MidoriXX Tag'
-        required: false
-        default: ''
-        type: string
+          - 'midori01/ReSukiSU:main'
+          - 'midori01/ReSukiSU:test'
+          - 'ReSukiSU/ReSukiSU:main'
       use_ccache:
         description: 'Ccache Speedup'
         required: true
         default: true
         type: boolean
       use_droidspaces:
-        description: 'Droidspaces'
+        description: 'Droidspaces & NTSync'
         required: true
         default: true
         type: boolean
@@ -88,6 +83,14 @@ on:
         required: false
         default: ''
         type: string
+      hook_mode:
+        description: "MidoriXX Hook Mode (hookless only for 6.12)"
+        required: true
+        default: "manual"
+        type: choice
+        options:
+          - manual
+          - hookless
       kernel_localversion:
         description: 'Spoof Kernel Name'
         required: true
@@ -231,10 +234,10 @@ jobs:
       build_timestamp: ${{ inputs.build_timestamp }}
       build_user: ${{ inputs.build_user }}
       build_host: ${{ inputs.build_host }}
-      midorire_branch: ${{ inputs.midorire_branch }}
+      midorisu_branch: ${{ inputs.midorisu_branch }}
       midorixx_branch: ${{ inputs.midorixx_branch }}
+      midorire_branch: ${{ inputs.midorire_branch }}
       hook_mode: ${{ inputs.hook_mode }}
-      midorixx_tag: ${{ inputs.midorixx_tag }}
 
   build_scene_hider:
     name: "eBPF ${{ matrix.kernel_version }}"
@@ -346,7 +349,7 @@ jobs:
           if [ -f "commit_info/midorisu_ksu_commit" ] && [ -f "commit_info/ksu_commit_count" ]; then
             out "driver_version=$((30000 + $(cat commit_info/ksu_commit_count)))"
           fi
-          ksu_line MidoriSU midori01/KernelSU commit_info/midorisu_ksu_commit
+          ksu_line MidoriSU "$(cat commit_info/midorisu_ksu_repo 2>/dev/null)" commit_info/midorisu_ksu_commit
           ksu_line MidoriXX "$(cat commit_info/midorixx_ksu_repo 2>/dev/null)" commit_info/midorixx_ksu_commit
           ksu_line MidoriRE "$(cat commit_info/midorire_ksu_repo 2>/dev/null)" commit_info/midorire_ksu_commit
 
@@ -367,7 +370,7 @@ jobs:
             - **Kernel Name (Spoofed)**: `${{ matrix.kv }}.${{ steps.meta.outputs.sub_level }}${{ inputs.kernel_localversion }}`
             - **Build Time (Spoofed)**: `${{ inputs.build_timestamp }}`
             - **Builder (Spoofed)**: `${{ inputs.build_user }}@${{ inputs.build_host }}`
-            - **Docker**: ${{ inputs.use_droidspaces && '✅' || '❌' }}　**TMPFS**: ✅　**BBR**: ✅　**IPSET**: ✅
+            - **Droidspaces**: ${{ inputs.use_droidspaces && '✅' || '❌' }}　**TMPFS**: ✅　**BBR**: ✅　**IPSET**: ✅
             - **eBPF**: ${{ env.EBPF_FILE && format('✅ `({0})`', env.EBPF_FILE) || '❌' }}
             - **KSU Toolkit**: ${{ env.TOOLKIT_FILE && format('✅ `({0})`', env.TOOLKIT_FILE) || '❌' }}
             - **Ccache**: ${{ inputs.use_ccache && '✅' || '❌' }}　**LLVM Clang**: `${{ steps.meta.outputs.clang_version }}`${{ steps.meta.outputs.rust_version && format('　**Rust**: `{0}`', steps.meta.outputs.rust_version) || '' }}

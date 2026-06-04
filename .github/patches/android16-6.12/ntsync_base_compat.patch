@@ -1,0 +1,24 @@
+From: midori01 <lv@lvlv.lv>
+Date: Thu, 4 Jun 2026 16:50:00 +0900
+Subject: [PATCH] Enable NTSync for android16-6.12
+
+---
+ drivers/misc/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 5018db96c802..704bfff29334 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -525,7 +525,7 @@ config OPEN_DICE
+ 
+ config NTSYNC
+ 	tristate "NT synchronization primitive emulation"
+-	depends on BROKEN
++	default	m
+ 	help
+ 	  This module provides kernel support for emulation of Windows NT
+ 	  synchronization primitives. It is not a hardware driver.
+-- 
+2.54.0
+

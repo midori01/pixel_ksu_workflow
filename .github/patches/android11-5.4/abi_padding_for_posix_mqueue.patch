@@ -1,0 +1,38 @@
+From: midori01 <midori01@users.noreply.github.com>
+Date: Wed, 27 May 2026 12:55:08 +0900
+Subject: [PATCH] ABI padding for POSIX_MQUEUE for android11-5.4
+
+---
+ include/linux/sched/user.h | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/include/linux/sched/user.h b/include/linux/sched/user.h
+index 573b448e07ac..6686fef53ad1 100644
+--- a/include/linux/sched/user.h
++++ b/include/linux/sched/user.h
+@@ -23,7 +23,6 @@ struct user_struct {
+ #endif
+ #ifdef CONFIG_POSIX_MQUEUE
+ 	/* protected by mq_lock	*/
+-	unsigned long mq_bytes;	/* How many bytes can be allocated to mqueue? */
+ #endif
+ 	unsigned long locked_shm; /* How many pages of mlocked shm ? */
+ 	unsigned long unix_inflight;	/* How many files in flight in unix sockets */
+@@ -40,9 +39,13 @@ struct user_struct {
+ 
+ 	/* Miscellaneous per-user rate limit */
+ 	struct ratelimit_state ratelimit;
+-
++#if defined(CONFIG_POSIX_MQUEUE)
++	ANDROID_KABI_USE(1, unsigned long mq_bytes);
++	ANDROID_KABI_RESERVE(2);
++#else
+ 	ANDROID_KABI_RESERVE(1);
+ 	ANDROID_KABI_RESERVE(2);
++#endif
+ };
+ 
+ extern int uids_sysfs_init(void);
+-- 
+2.54.0
+

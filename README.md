@@ -30,17 +30,17 @@ All kernel version-specific settings are centralized in [`.github/config/kernel_
 | Variant | Source | SUSFS | Droidspaces | Hook Strategy |
 | :--- | :--- | :--- | :--- | :--- |
 | `MidoriSU` | [midori01/KernelSU](https://github.com/midori01/KernelSU) | ❌ | ❌ | Kprobes |
-| `MidoriSU-Droidspaces` | [midori01/KernelSU](https://github.com/midori01/KernelSU) | ❌ | ✅ | Kprobes |
+| `MidoriSU-DS` | [midori01/KernelSU](https://github.com/midori01/KernelSU) | ❌ | ✅ | Kprobes |
 | `MidoriSU-SUSFS` | [midori01/KernelSU](https://github.com/midori01/KernelSU) | ✅ | ❌ | Inline |
-| `MidoriSU-SUSFS-Droidspaces` | [midori01/KernelSU](https://github.com/midori01/KernelSU) | ✅ | ✅ | Inline |
+| `MidoriSU-SUSFS-DS` | [midori01/KernelSU](https://github.com/midori01/KernelSU) | ✅ | ✅ | Inline |
 | `MidoriXX` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ❌ | ❌ | Manual* |
-| `MidoriXX-Droidspaces` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ❌ | ✅ | Manual* |
+| `MidoriXX-DS` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ❌ | ✅ | Manual* |
 | `MidoriXX-SUSFS` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ✅ | ❌ | Manual* |
-| `MidoriXX-SUSFS-Droidspaces` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ✅ | ✅ | Manual* |
+| `MidoriXX-SUSFS-DS` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ✅ | ✅ | Manual* |
 | `MidoriRE` | [ReSukiSU/ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) | ❌ | ❌ | Manual |
-| `MidoriRE-Droidspaces` | [ReSukiSU/ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) | ❌ | ✅ | Manual |
+| `MidoriRE-DS` | [ReSukiSU/ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) | ❌ | ✅ | Manual |
 | `MidoriRE-SUSFS` | [ReSukiSU/ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) | ✅ | ❌ | Inline |
-| `MidoriRE-SUSFS-Droidspaces` | [ReSukiSU/ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) | ✅ | ✅ | Inline |
+| `MidoriRE-SUSFS-DS` | [ReSukiSU/ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) | ✅ | ✅ | Inline |
 
 > \* **MidoriXX Hook Strategy:** Runtime-configurable via `hook_mode`. Supports `manual` (default) or `hookless`. SUSFS integration uses de-inlined hooks.
 
@@ -70,5 +70,6 @@ All kernel version-specific settings are centralized in [`.github/config/kernel_
 | **eBPF Scene Hider** | Optionally compiles and packages [Scene Port Hider by eBPF](https://github.com/Andrea-lyz/Scene-Port-Hider-by-eBPF) alongside kernel artifacts. Spins up as soon as the first kernel build completes, independent of the remaining matrix jobs. |
 | **SUSFS Module** | When SUSFS is enabled, automatically fetches the latest [susfs4ksu-module](https://github.com/sidex15/susfs4ksu-module) and attaches it to the release. A single `susfs_commit` input controls SUSFS versions across variants. |
 | **KSU Toolkit** | Automatically fetches the latest [ksu_toolkit](https://github.com/backslashxx/ksu_toolkit) module from nightly.link and attaches it to the release. |
+| **Droidspaces** | Container support via [Droidspaces-OSS](https://github.com/ravindu644/Droidspaces-OSS) — SYSVIPC, IPC_NS, PID_NS, DEVTMPFS, NTSync, and networking. Enabled per-variant through the `use_droidspaces` toggle. |
 | **Ccache** | Compiler cache integration with a 60-second wait guard for dependency installation, ensuring robust accelerated incremental rebuilds across workflow runs. |
 | **Spoofed Build Metadata** | Customizable `kernel name`, `build timestamp`, `user`, and `host` strings for the compiled image. |
