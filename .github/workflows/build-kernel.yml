@@ -243,7 +243,7 @@ jobs:
           git clone --depth=1 https://github.com/Sakion-Team/Re-Kernel.git "$REKERNEL_DIR"
           cp -r "$REKERNEL_DIR"/LKM-Source drivers/rekernel
           sed -i 's/depends on MODULES/depends on KSU/' drivers/rekernel/Kconfig
-          sed -i 's/obj-m := rekernel.o/obj-y := rekernel.o/' drivers/rekernel/Makefile
+          sed -i 's/obj-m := rekernel.o/obj-$(CONFIG_REKERNEL) += rekernel.o/' drivers/rekernel/Makefile
           grep -q "rekernel" drivers/Makefile || echo 'obj-$(CONFIG_REKERNEL) += rekernel/' >> drivers/Makefile
           grep -q "drivers/rekernel/Kconfig" drivers/Kconfig || sed -i '/endmenu/i source "drivers/rekernel/Kconfig"' drivers/Kconfig
 
