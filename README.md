@@ -35,8 +35,8 @@ All kernel version-specific settings are centralized in [`.github/config/kernel_
 | `MidoriSU-SUSFS-DS` | [midori01/KernelSU](https://github.com/midori01/KernelSU) | ✅ | ✅ | Inline |
 | `MidoriXX` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ❌ | ❌ | Manual* |
 | `MidoriXX-DS` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ❌ | ✅ | Manual* |
-| `MidoriXX-SUSFS` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ✅ | ❌ | Manual* |
-| `MidoriXX-SUSFS-DS` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ✅ | ✅ | Manual* |
+| `MidoriXX-SUSFS` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ✅ | ❌ | De-inlined* |
+| `MidoriXX-SUSFS-DS` | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | ✅ | ✅ | De-inlined* |
 | `MidoriRE` | [ReSukiSU/ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) | ❌ | ❌ | Manual* |
 | `MidoriRE-DS` | [ReSukiSU/ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) | ❌ | ✅ | Manual* |
 | `MidoriRE-SUSFS` | [ReSukiSU/ReSukiSU](https://github.com/ReSukiSU/ReSukiSU) | ✅ | ❌ | Inline* |

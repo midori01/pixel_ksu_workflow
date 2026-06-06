@@ -82,6 +82,11 @@ on:
         required: true
         default: true
         type: boolean
+      unicode_bypass_fix:
+        description: 'Unicode Bypass Fix'
+        required: true
+        default: true
+        type: boolean
       build_scene_hider:
         description: 'eBPF (Scene Hider)'
         required: true
@@ -245,6 +250,7 @@ jobs:
       variant: ${{ matrix.variant }}
       use_droidspaces: ${{ matrix.droidspaces }}
       use_rekernel: ${{ inputs.use_rekernel }}
+      unicode_bypass_fix: ${{ inputs.unicode_bypass_fix }}
       use_susfs: ${{ matrix.susfs }}
       source_mirror: ${{ inputs.source_mirror }}
       use_ccache: ${{ inputs.use_ccache }}

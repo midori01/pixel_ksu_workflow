@@ -1,12 +1,11 @@
 From: midori01 <lv@lvlv.lv>
-Date: Thu, 4 Jun 2026 13:54:13 +0900
+Date: Sun, 7 Jun 2026 07:24:31 +0900
 Subject: [PATCH] KowSU to MidoriSU
 
 ---
  .github/workflows/build-manager.yml           |  30 --
  .github/workflows/build.yml                   | 272 ++++++++++++++++++
  .github/workflows/clang-format.yml            |  18 +-
- .github/workflows/cleanup-runs.yml            |  24 ++
  .github/workflows/clippy.yml                  |  15 +-
  .github/workflows/deploy-website.yml          |   7 -
  .github/workflows/ksud-extra.yml              |  11 +
@@ -36,9 +35,8 @@ Subject: [PATCH] KowSU to MidoriSU
  manager/build.gradle.kts                      |   7 +
  uapi/supercall.h                              |   5 +-
  userspace/ksud/build.rs                       |  49 ++--
- 33 files changed, 476 insertions(+), 181 deletions(-)
+ 32 files changed, 452 insertions(+), 181 deletions(-)
  create mode 100644 .github/workflows/build.yml
- create mode 100644 .github/workflows/cleanup-runs.yml
 
 diff --git a/.github/workflows/build-manager.yml b/.github/workflows/build-manager.yml
 index 3a7a95ee..82f48a0f 100644
@@ -388,36 +386,6 @@ index 1351226c..b550d7be 100644
  
  permissions:
    checks: write
-diff --git a/.github/workflows/cleanup-runs.yml b/.github/workflows/cleanup-runs.yml
-new file mode 100644
-index 00000000..8f4f68aa
---- /dev/null
-+++ b/.github/workflows/cleanup-runs.yml
-@@ -0,0 +1,24 @@
-+name: Cleanup Workflow Runs
-+
-+on:
-+  workflow_dispatch:
-+
-+jobs:
-+  cleanup:
-+    runs-on: ubuntu-latest
-+    permissions:
-+      actions: write
-+    steps:
-+      - name: Delete completed and failed runs
-+        env:
-+          GH_TOKEN: ${{ github.token }}
-+          GH_REPO: ${{ github.repository }}
-+          CURRENT_RUN_ID: ${{ github.run_id }}
-+        run: |
-+          for status in completed failure; do
-+            echo "Deleting runs with status: $status ..."
-+            gh run list --limit 200 --status "$status" --json databaseId -q '.[].databaseId' \
-+              | grep -v "$CURRENT_RUN_ID" \
-+              | xargs -r -n1 gh run delete
-+          done
-+          echo "Deletion complete!"
 diff --git a/.github/workflows/clippy.yml b/.github/workflows/clippy.yml
 index dbd92b8b..9d81954e 100644
 --- a/.github/workflows/clippy.yml
@@ -690,7 +658,7 @@ index 680816f7..f6dfe4d8 100644
          .cmd = 0,
          .name = NULL,
 diff --git a/manager/app/build.gradle.kts b/manager/app/build.gradle.kts
-index 2752767a..e833acec 100644
+index e563b95d..70194536 100644
 --- a/manager/app/build.gradle.kts
 +++ b/manager/app/build.gradle.kts
 @@ -120,7 +120,7 @@ android {
@@ -728,7 +696,7 @@ index 44407878..bd446784 100644
 +    return env->NewStringUTF(hook_type);
 +}
 diff --git a/manager/app/src/main/cpp/ksu.cc b/manager/app/src/main/cpp/ksu.cc
-index abf7a3ba..ecbad784 100644
+index abf7a3ba..73eba971 100644
 --- a/manager/app/src/main/cpp/ksu.cc
 +++ b/manager/app/src/main/cpp/ksu.cc
 @@ -241,3 +241,23 @@ bool is_selinux_hide_enabled() {
@@ -796,7 +764,7 @@ index 3aa34b2c..bad2884f 100644
      val state = AboutUiState(
          title = stringResource(R.string.about),
 diff --git a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt
-index 251ce6e3..6f63afa8 100644
+index e46417b5..7cb87896 100644
 --- a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt
 +++ b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt
 @@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Security
@@ -806,8 +774,8 @@ index 251ce6e3..6f63afa8 100644
 +import androidx.compose.material.icons.outlined.Link
  import androidx.compose.material3.Button
  import androidx.compose.material3.ButtonDefaults
- import androidx.compose.material3.ExperimentalMaterial3Api
-@@ -97,11 +98,13 @@ fun HomePagerMaterial(
+ import androidx.compose.material3.Icon
+@@ -94,11 +95,13 @@ fun HomePagerMaterial(
                  state = state,
                  actions = actions,
              )
@@ -820,8 +788,8 @@ index 251ce6e3..6f63afa8 100644
 +        */
  //            if (state.showVersionMismatchWarning) {
  //                WarningCard(
- //                    stringResource(id = R.string.home_version_mismatch,
-@@ -518,7 +521,6 @@ private fun InfoCard(systemInfo: SystemInfo) {
+ //                    stringResource(
+@@ -516,7 +519,6 @@ private fun InfoCard(systemInfo: SystemInfo) {
              )
  
              Spacer(Modifier.height(16.dp))
@@ -829,7 +797,7 @@ index 251ce6e3..6f63afa8 100644
              InfoCardItem(
                  icon = Icons.Outlined.PhoneAndroid,
                  label = stringResource(R.string.home_device_model),
-@@ -546,6 +548,13 @@ private fun InfoCard(systemInfo: SystemInfo) {
+@@ -544,6 +546,13 @@ private fun InfoCard(systemInfo: SystemInfo) {
                  content = systemInfo.fingerprint
              )
  
@@ -843,7 +811,7 @@ index 251ce6e3..6f63afa8 100644
              Spacer(Modifier.height(16.dp))
              val selinuxDisplay = when (systemInfo.selinuxStatus) {
                  "Enforcing" -> stringResource(R.string.selinux_status_enforcing)
-@@ -614,6 +623,7 @@ private val previewSystemInfo = SystemInfo(
+@@ -612,6 +621,7 @@ private val previewSystemInfo = SystemInfo(
      managerVersion = "3.0.0 (30000)",
      deviceModel = "Google Pixel 6 Pro",
      fingerprint = "google/raven/raven:14/AP1A.240305.019:user/release-keys",

@@ -34,7 +34,7 @@ index 2ea7d8b4..d45ce737 100644
 +    struct ksu_hook_type_cmd cmd = { 0 };
 +
 +#if defined(CONFIG_KSU_SUSFS)
-+    const char *type = "De-Inline";
++    const char *type = "De-inlined";
 +#elif defined(CONFIG_KSU_HACK_ARM64_BRANCH_LINK) || defined(CONFIG_KSU_TAMPER_SYSCALL_TABLE)
 +    const char *type = "Hookless";
 +#elif defined(CONFIG_KSU_KPROBES_KSUD)

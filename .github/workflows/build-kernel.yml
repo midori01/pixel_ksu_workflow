@@ -16,6 +16,10 @@ on:
         required: false
         type: boolean
         default: true
+      unicode_bypass_fix:
+        required: false
+        type: boolean
+        default: false
       use_susfs:
         required: true
         type: boolean
@@ -249,6 +253,12 @@ jobs:
           sed -i 's/obj-m := rekernel.o/obj-$(CONFIG_REKERNEL) += rekernel.o/' drivers/rekernel/Makefile
           grep -q "rekernel" drivers/Makefile || echo 'obj-$(CONFIG_REKERNEL) += rekernel/' >> drivers/Makefile
           grep -q "drivers/rekernel/Kconfig" drivers/Kconfig || sed -i '/endmenu/i source "drivers/rekernel/Kconfig"' drivers/Kconfig
+
+      - name: Apply Unicode Bypass Fix
+        if: inputs.unicode_bypass_fix
+        working-directory: kernel_workspace/common
+        run: |
+          patch -p1 < "${{ github.workspace }}/.github/patches/unicode_bypass_fix.patch"
 
       - name: Inject Kernel Configs
         uses: ./.github/actions/kernel-config
