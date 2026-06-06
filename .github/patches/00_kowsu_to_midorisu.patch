@@ -1,11 +1,12 @@
 From: midori01 <lv@lvlv.lv>
-Date: Thu, 4 Jun 2026 13:49:03 +0900
+Date: Thu, 4 Jun 2026 13:54:13 +0900
 Subject: [PATCH] KowSU to MidoriSU
 
 ---
  .github/workflows/build-manager.yml           |  30 --
  .github/workflows/build.yml                   | 272 ++++++++++++++++++
  .github/workflows/clang-format.yml            |  18 +-
+ .github/workflows/cleanup-runs.yml            |  24 ++
  .github/workflows/clippy.yml                  |  15 +-
  .github/workflows/deploy-website.yml          |   7 -
  .github/workflows/ksud-extra.yml              |  11 +
@@ -15,15 +16,29 @@ Subject: [PATCH] KowSU to MidoriSU
  .github/workflows/shellcheck.yml              |  15 +-
  kernel/manager/apk_sign.c                     |  19 +-
  kernel/setup.sh                               |   2 +-
+ kernel/supercall/dispatch.c                   |  26 ++
  manager/app/build.gradle.kts                  |   4 +-
+ manager/app/src/main/cpp/jni.cc               |   8 +
+ manager/app/src/main/cpp/ksu.cc               |  20 ++
+ manager/app/src/main/cpp/ksu.h                |   3 +
+ .../main/java/me/weishu/kernelsu/Natives.kt   |   2 +
  .../kernelsu/ui/screen/about/AboutScreen.kt   |   4 +-
- .../kernelsu/ui/screen/home/HomeMaterial.kt   |   2 +
+ .../kernelsu/ui/screen/home/HomeMaterial.kt   |  12 +-
+ .../kernelsu/ui/screen/home/HomeMiuix.kt      |   5 +
+ .../kernelsu/ui/screen/home/HomeUtils.kt      |   1 +
+ .../kernelsu/ui/viewmodel/HomeViewModel.kt    |   1 +
  .../main/res/drawable/ic_launcher_kowsu.xml   |  61 ++--
- manager/app/src/main/res/values/strings.xml   |   4 +-
+ .../app/src/main/res/values-ja/strings.xml    |   1 +
+ .../src/main/res/values-zh-rCN/strings.xml    |   1 +
+ .../src/main/res/values-zh-rHK/strings.xml    |   1 +
+ .../src/main/res/values-zh-rTW/strings.xml    |   1 +
+ manager/app/src/main/res/values/strings.xml   |   3 +-
  manager/build.gradle.kts                      |   7 +
+ uapi/supercall.h                              |   5 +-
  userspace/ksud/build.rs                       |  49 ++--
- 19 files changed, 370 insertions(+), 179 deletions(-)
+ 33 files changed, 476 insertions(+), 181 deletions(-)
  create mode 100644 .github/workflows/build.yml
+ create mode 100644 .github/workflows/cleanup-runs.yml
 
 diff --git a/.github/workflows/build-manager.yml b/.github/workflows/build-manager.yml
 index 3a7a95ee..82f48a0f 100644
@@ -373,6 +388,36 @@ index 1351226c..b550d7be 100644
  
  permissions:
    checks: write
+diff --git a/.github/workflows/cleanup-runs.yml b/.github/workflows/cleanup-runs.yml
+new file mode 100644
+index 00000000..8f4f68aa
+--- /dev/null
++++ b/.github/workflows/cleanup-runs.yml
+@@ -0,0 +1,24 @@
++name: Cleanup Workflow Runs
++
++on:
++  workflow_dispatch:
++
++jobs:
++  cleanup:
++    runs-on: ubuntu-latest
++    permissions:
++      actions: write
++    steps:
++      - name: Delete completed and failed runs
++        env:
++          GH_TOKEN: ${{ github.token }}
++          GH_REPO: ${{ github.repository }}
++          CURRENT_RUN_ID: ${{ github.run_id }}
++        run: |
++          for status in completed failure; do
++            echo "Deleting runs with status: $status ..."
++            gh run list --limit 200 --status "$status" --json databaseId -q '.[].databaseId' \
++              | grep -v "$CURRENT_RUN_ID" \
++              | xargs -r -n1 gh run delete
++          done
++          echo "Deletion complete!"
 diff --git a/.github/workflows/clippy.yml b/.github/workflows/clippy.yml
 index dbd92b8b..9d81954e 100644
 --- a/.github/workflows/clippy.yml
@@ -600,6 +645,50 @@ index 2a4f9893..d87afd63 100755
      cd "$GKI_ROOT/KernelSU"
      git stash && echo "[-] Stashed current changes."
      if [ "$(git status | grep -Po 'v\d+(\.\d+)*' | head -n1)" ]; then
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index 680816f7..f6dfe4d8 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -719,6 +719,26 @@ static int do_get_sulog_fd(void __user *arg)
+     return ksu_install_sulog_fd();
+ }
+ 
++static int do_get_hook_type(void __user *arg)
++{
++    struct ksu_hook_type_cmd cmd = { 0 };
++
++#ifdef CONFIG_KSU_SUSFS
++    const char *type = "Inline";
++#else
++    const char *type = "Kprobes";
++#endif
++
++    strscpy(cmd.hook_type, type, sizeof(cmd.hook_type));
++
++    if (copy_to_user(arg, &cmd, sizeof(cmd))) {
++        pr_err("get_hook_type: copy_to_user failed\n");
++        return -EFAULT;
++    }
++
++    return 0;
++}
++
+ // IOCTL handlers mapping table
+ // clang-format off
+ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
+@@ -854,6 +874,12 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
+         .handler = do_get_sulog_fd,
+         .perm_check = only_root
+     },
++    {
++        .cmd = KSU_IOCTL_HOOK_TYPE,
++        .name = "HOOK_TYPE",
++        .handler = do_get_hook_type,
++        .perm_check = manager_or_root
++    },
+     {
+         .cmd = 0,
+         .name = NULL,
 diff --git a/manager/app/build.gradle.kts b/manager/app/build.gradle.kts
 index 2752767a..e833acec 100644
 --- a/manager/app/build.gradle.kts
@@ -622,6 +711,75 @@ index 2752767a..e833acec 100644
      )
  }
  
+diff --git a/manager/app/src/main/cpp/jni.cc b/manager/app/src/main/cpp/jni.cc
+index 44407878..bd446784 100644
+--- a/manager/app/src/main/cpp/jni.cc
++++ b/manager/app/src/main/cpp/jni.cc
+@@ -409,3 +409,11 @@ Java_me_weishu_kernelsu_magica_AppZygotePreload_forkDontCareAndExecKsud(JNIEnv *
+     env->ReleaseStringUTFChars(ksud_path, path);
+     env->ReleaseStringUTFChars(pkg_name, pkg);
+ }
++
++extern "C"
++JNIEXPORT jstring JNICALL
++Java_me_weishu_kernelsu_Natives_getHookType(JNIEnv *env, jobject) {
++    char hook_type[32] = {0};
++    get_hook_type(hook_type, sizeof(hook_type));
++    return env->NewStringUTF(hook_type);
++}
+diff --git a/manager/app/src/main/cpp/ksu.cc b/manager/app/src/main/cpp/ksu.cc
+index abf7a3ba..ecbad784 100644
+--- a/manager/app/src/main/cpp/ksu.cc
++++ b/manager/app/src/main/cpp/ksu.cc
+@@ -241,3 +241,23 @@ bool is_selinux_hide_enabled() {
+     }
+     return value != 0;
+ }
++
++#include <cstring>
++
++#define KSU_HOOK_TYPE_CMD _IOC(_IOC_READ, 'K', 101, 0)
++
++bool get_hook_type(char *buf, size_t size) {
++    if (!buf || size == 0) return false;
++
++    struct ksu_hook_type_cmd cmd = {0};
++
++    if (ksuctl(KSU_HOOK_TYPE_CMD, &cmd) == 0) {
++        strncpy(buf, cmd.hook_type, size - 1);
++        buf[size - 1] = '\0';
++        return true;
++    }
++
++    strncpy(buf, "Unknown", size - 1);
++    buf[size - 1] = '\0';
++    return false;
++}
+diff --git a/manager/app/src/main/cpp/ksu.h b/manager/app/src/main/cpp/ksu.h
+index 6dd387ed..3d4049d2 100644
+--- a/manager/app/src/main/cpp/ksu.h
++++ b/manager/app/src/main/cpp/ksu.h
+@@ -62,4 +62,7 @@ inline std::pair<int, int> legacy_get_info() {
+     return {version, flags};
+ }
+ 
++// Hook type
++bool get_hook_type(char *buf, size_t size);
++
+ #endif //KERNELSU_KSU_H
+diff --git a/manager/app/src/main/java/me/weishu/kernelsu/Natives.kt b/manager/app/src/main/java/me/weishu/kernelsu/Natives.kt
+index 6a11ce26..4744dc62 100644
+--- a/manager/app/src/main/java/me/weishu/kernelsu/Natives.kt
++++ b/manager/app/src/main/java/me/weishu/kernelsu/Natives.kt
+@@ -103,6 +103,8 @@ object Natives {
+ 
+     external fun getSuperuserCount(): Int
+ 
++    external fun getHookType(): String
++
+     private const val NON_ROOT_DEFAULT_PROFILE_KEY = "$"
+     private const val NOBODY_UID = 9999
+ 
 diff --git a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/about/AboutScreen.kt b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/about/AboutScreen.kt
 index 3aa34b2c..bad2884f 100644
 --- a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/about/AboutScreen.kt
@@ -638,10 +796,18 @@ index 3aa34b2c..bad2884f 100644
      val state = AboutUiState(
          title = stringResource(R.string.about),
 diff --git a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt
-index 251ce6e3..2ee9988d 100644
+index 251ce6e3..6f63afa8 100644
 --- a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt
 +++ b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMaterial.kt
-@@ -97,11 +97,13 @@ fun HomePagerMaterial(
+@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Security
+ import androidx.compose.material.icons.outlined.VerifiedUser
+ import androidx.compose.material.icons.outlined.Warning
+ import androidx.compose.material.icons.outlined.Widgets
++import androidx.compose.material.icons.outlined.Link
+ import androidx.compose.material3.Button
+ import androidx.compose.material3.ButtonDefaults
+ import androidx.compose.material3.ExperimentalMaterial3Api
+@@ -97,11 +98,13 @@ fun HomePagerMaterial(
                  state = state,
                  actions = actions,
              )
@@ -655,6 +821,83 @@ index 251ce6e3..2ee9988d 100644
  //            if (state.showVersionMismatchWarning) {
  //                WarningCard(
  //                    stringResource(id = R.string.home_version_mismatch,
+@@ -518,7 +521,6 @@ private fun InfoCard(systemInfo: SystemInfo) {
+             )
+ 
+             Spacer(Modifier.height(16.dp))
+-
+             InfoCardItem(
+                 icon = Icons.Outlined.PhoneAndroid,
+                 label = stringResource(R.string.home_device_model),
+@@ -546,6 +548,13 @@ private fun InfoCard(systemInfo: SystemInfo) {
+                 content = systemInfo.fingerprint
+             )
+ 
++            Spacer(Modifier.height(16.dp))
++            InfoCardItem(
++                icon = Icons.Outlined.Link,
++                label = stringResource(R.string.home_hook_type),
++                content = systemInfo.hookType
++            )
++
+             Spacer(Modifier.height(16.dp))
+             val selinuxDisplay = when (systemInfo.selinuxStatus) {
+                 "Enforcing" -> stringResource(R.string.selinux_status_enforcing)
+@@ -614,6 +623,7 @@ private val previewSystemInfo = SystemInfo(
+     managerVersion = "3.0.0 (30000)",
+     deviceModel = "Google Pixel 6 Pro",
+     fingerprint = "google/raven/raven:14/AP1A.240305.019:user/release-keys",
++    hookType = "Unknown",
+     selinuxStatus = "Enforcing",
+     seccompStatus = 2
+ )
+diff --git a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMiuix.kt b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMiuix.kt
+index 9bc4acf9..da14df4e 100644
+--- a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMiuix.kt
++++ b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeMiuix.kt
+@@ -502,6 +502,10 @@ private fun InfoCard(systemInfo: SystemInfo) {
+             InfoText(title = stringResource(R.string.home_kernel), content = systemInfo.kernelVersion)
+             InfoText(title = stringResource(R.string.home_device_model), content = systemInfo.deviceModel)
+             InfoText(title = stringResource(R.string.home_fingerprint), content = systemInfo.fingerprint)
++            InfoText(
++                title = stringResource(R.string.home_hook_type),
++                content = systemInfo.hookType
++            )
+             val selinuxDisplay = when (systemInfo.selinuxStatus) {
+                 "Enforcing" -> stringResource(R.string.selinux_status_enforcing)
+                 "Permissive" -> stringResource(R.string.selinux_status_permissive)
+@@ -566,6 +570,7 @@ private val previewSystemInfo = SystemInfo(
+     managerVersion = "3.0.0 (30000)",
+     deviceModel = "Xiaomi 17 Pro Max",
+     fingerprint = "Xiaomi/popsicle/popsicle:16/BQ2A.250705.001-BP2A.250605.031.A3/OS3.0.313.0.WPBCNXM:user/release-keys",
++    hookType = "Unknown",
+     selinuxStatus = "Enforcing",
+     seccompStatus = 2
+ )
+diff --git a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeUtils.kt b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeUtils.kt
+index 4f3872b9..e3e09df4 100644
+--- a/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeUtils.kt
++++ b/manager/app/src/main/java/me/weishu/kernelsu/ui/screen/home/HomeUtils.kt
+@@ -16,6 +16,7 @@ data class SystemInfo(
+     val managerVersion: String,
+     val deviceModel: String,
+     val fingerprint: String,
++    val hookType: String,
+     val selinuxStatus: String,
+     val seccompStatus: Int
+ )
+diff --git a/manager/app/src/main/java/me/weishu/kernelsu/ui/viewmodel/HomeViewModel.kt b/manager/app/src/main/java/me/weishu/kernelsu/ui/viewmodel/HomeViewModel.kt
+index dfa0348e..357c9909 100644
+--- a/manager/app/src/main/java/me/weishu/kernelsu/ui/viewmodel/HomeViewModel.kt
++++ b/manager/app/src/main/java/me/weishu/kernelsu/ui/viewmodel/HomeViewModel.kt
+@@ -98,6 +98,7 @@ class HomeViewModel : ViewModel() {
+                 managerVersion = "${managerVersion.versionName} (${managerVersion.versionCode})",
+                 deviceModel = resolveDeviceName(),
+                 fingerprint = Build.FINGERPRINT,
++                hookType = if (isManager && ksuVersion != null) Natives.getHookType() else "N/A",
+                 selinuxStatus = getSELinuxStatusRaw(),
+                 seccompStatus = runCatching {
+                     Os.prctl(21 /* PR_GET_SECCOMP */, 0, 0, 0, 0)
 diff --git a/manager/app/src/main/res/drawable/ic_launcher_kowsu.xml b/manager/app/src/main/res/drawable/ic_launcher_kowsu.xml
 index 585830ef..f1ee7fbe 100644
 --- a/manager/app/src/main/res/drawable/ic_launcher_kowsu.xml
@@ -723,8 +966,56 @@ index 585830ef..f1ee7fbe 100644
 +            android:pathData="M887.5,620.1c-23.3,4.7 -51.5,19.3 -76.5,39.7 -12.7,10.5 -36,33.6 -49.4,49.2 -25.8,30.1 -53.4,71.1 -79.5,118 -12,21.7 -35.1,67.5 -45.1,89.5 -10.4,22.8 -37.6,91.3 -41.1,103.2 -2,6.8 -3.5,5.4 -4.4,-4 -2.3,-27.2 -9,-45 -21.9,-58.2 -10.6,-10.7 -21.2,-15.8 -35.6,-17 -15.6,-1.4 -31.3,2.5 -39.6,9.8 -8,7.1 -8.8,10.8 -5.3,25.5 1.1,4.8 2.7,11.4 3.4,14.7 7.6,31.8 15.3,82.6 19.4,128 2.1,22.8 3.2,53.3 3.4,94l0.2,42 2.8,5.7c3.4,6.9 10.9,14.5 20.5,20.9 12.4,8.2 23.5,11.4 36.7,10.7 10.2,-0.5 17.3,-3.7 23.8,-10.7 7,-7.5 12.4,-19.3 42.7,-93.1 3.7,-9.1 8.6,-20.8 10.8,-26 2.2,-5.2 7.3,-17.6 11.5,-27.5 53.5,-128.4 101.3,-224.7 149.2,-300.3 10.6,-16.8 20,-30.3 34.6,-50 12.1,-16.3 37.4,-46.2 39,-46.2 1.4,-0 1.1,4.5 -1,15 -1.1,5.2 -2.7,14 -3.5,19.5 -0.9,5.5 -2.1,12.5 -2.6,15.5 -0.5,3 -1.2,7.1 -1.5,9 -0.3,1.9 -1.9,11.4 -3.5,21 -1.6,9.6 -3.6,22.7 -4.4,29 -0.8,6.3 -3.1,23.4 -5.1,38 -8.8,65.7 -16.3,143.1 -20.9,217 -3.1,47.6 -3.8,68.4 -4,106l-0.1,38.5 2.9,5.8c4.4,8.7 17.2,20.5 27.7,25.6 10.5,5 16.8,6.4 27.2,5.9 14,-0.7 23.7,-5.8 32.8,-17.1 3.2,-4 15.5,-27.5 41.7,-80 69.9,-139.8 105.2,-199.4 158.3,-267.8 18.3,-23.5 32,-39.1 52.5,-59.4 18.2,-18.1 23.6,-22.7 25.1,-21.2 0.3,0.4 -0.4,4.4 -1.7,8.9 -1.2,4.6 -3.6,13.1 -5.1,19 -1.6,6 -4.3,15.9 -5.9,22 -3.8,14.1 -14.5,59.1 -17.1,71.8 -5.9,28.5 -12.7,73.9 -15.1,100 -1.7,19.7 -1.7,75.6 0.1,87.5 7.2,48.7 21,80.4 45.1,104.1 13.9,13.6 27.7,22.4 49.2,30.9 34.1,13.4 72.4,14.9 105.5,3.9 11,-3.7 30,-13.6 39.6,-20.6 11,-8.1 30.6,-28.2 38.9,-39.8 22.2,-31.3 31.7,-67.2 24.9,-93.5 -5.8,-22 -17.9,-36.1 -32.8,-38.1 -9.5,-1.2 -19.9,2.4 -24.5,8.6 -1,1.4 -4.1,8.8 -6.8,16.5 -8.5,23.9 -13.5,32.9 -24.3,44.2 -11.7,12.2 -24.1,18.3 -39.1,19.1 -15.9,0.8 -27,-3.4 -38,-14.3 -15.5,-15.5 -21.6,-35.5 -21.6,-70.7 0,-33 4.6,-67.5 19.5,-144.8 4.5,-23.3 9.4,-53.5 11.7,-72.9 3,-24.5 3.3,-63.6 0.6,-77.8 -6.1,-32.2 -19.5,-52.1 -42.8,-63.8 -27.7,-13.8 -62.6,-16.1 -92.7,-6 -26.7,8.9 -49.3,23.8 -75.6,49.7 -22.9,22.6 -39.4,43.6 -64.8,82.8 -14.5,22.3 -24.6,38.8 -56.1,92.3 -3.9,6.4 -7.4,12 -7.9,12.3 -1.3,0.8 -1.1,-4.2 0.5,-11.6 3.9,-18.1 13.1,-59.5 16.7,-75 8.5,-36.4 16.7,-79.2 18.9,-98.5 1.9,-15.6 2.4,-47.9 1.1,-61 -1.4,-13.7 -5.5,-30.5 -10.1,-41.5 -11.4,-27.6 -35,-48.1 -68.6,-59.6 -7,-2.4 -9.6,-2.8 -22.9,-3 -8.2,-0.2 -17.2,0.2 -20,0.7z" />
 +    </group>
 +</vector>
+diff --git a/manager/app/src/main/res/values-ja/strings.xml b/manager/app/src/main/res/values-ja/strings.xml
+index 44d57809..4073028a 100644
+--- a/manager/app/src/main/res/values-ja/strings.xml
++++ b/manager/app/src/main/res/values-ja/strings.xml
+@@ -12,6 +12,7 @@
+     <string name="home_kernel">カーネル</string>
+     <string name="home_manager_version">アプリのバージョン</string>
+     <string name="home_fingerprint">Fingerprint</string>
++    <string name="home_hook_type">フックタイプ</string>
+     <string name="home_selinux_status">SELinux の状態</string>
+     <string name="selinux_status_disabled">Disabled</string>
+     <string name="selinux_status_enforcing">Enforcing</string>
+diff --git a/manager/app/src/main/res/values-zh-rCN/strings.xml b/manager/app/src/main/res/values-zh-rCN/strings.xml
+index 262978b0..d0ab625e 100644
+--- a/manager/app/src/main/res/values-zh-rCN/strings.xml
++++ b/manager/app/src/main/res/values-zh-rCN/strings.xml
+@@ -13,6 +13,7 @@
+     <string name="home_kernel">内核版本</string>
+     <string name="home_manager_version">管理器版本</string>
+     <string name="home_fingerprint">系统指纹</string>
++    <string name="home_hook_type">钩子类型</string>
+     <string name="home_selinux_status">SELinux 状态</string>
+     <string name="selinux_status_disabled">被禁用</string>
+     <string name="selinux_status_enforcing">强制执行</string>
+diff --git a/manager/app/src/main/res/values-zh-rHK/strings.xml b/manager/app/src/main/res/values-zh-rHK/strings.xml
+index 7eebc32d..d317d7b0 100644
+--- a/manager/app/src/main/res/values-zh-rHK/strings.xml
++++ b/manager/app/src/main/res/values-zh-rHK/strings.xml
+@@ -13,6 +13,7 @@
+     <string name="home_kernel">核心版本</string>
+     <string name="home_manager_version">管理器版本</string>
+     <string name="home_fingerprint">指紋</string>
++    <string name="home_hook_type">鈎子類型</string>
+     <string name="home_selinux_status">SELinux 狀態</string>
+     <string name="selinux_status_disabled">已停用</string>
+     <string name="selinux_status_enforcing">強制模式</string>
+diff --git a/manager/app/src/main/res/values-zh-rTW/strings.xml b/manager/app/src/main/res/values-zh-rTW/strings.xml
+index bce00a8d..7c65e769 100644
+--- a/manager/app/src/main/res/values-zh-rTW/strings.xml
++++ b/manager/app/src/main/res/values-zh-rTW/strings.xml
+@@ -12,6 +12,7 @@
+     <string name="home_kernel">核心版本</string>
+     <string name="home_manager_version">管理工具</string>
+     <string name="home_fingerprint">指紋資訊</string>
++    <string name="home_hook_type">鈎子類型</string>
+     <string name="home_selinux_status">SELinux 狀態</string>
+     <string name="selinux_status_disabled">已停用</string>
+     <string name="selinux_status_enforcing">強制執行</string>
 diff --git a/manager/app/src/main/res/values/strings.xml b/manager/app/src/main/res/values/strings.xml
-index dd72df42..b3b1fbb9 100644
+index dd72df42..2f53f55f 100644
 --- a/manager/app/src/main/res/values/strings.xml
 +++ b/manager/app/src/main/res/values/strings.xml
 @@ -1,7 +1,7 @@
@@ -736,15 +1027,14 @@ index dd72df42..b3b1fbb9 100644
      <string name="home">Home</string>
      <string name="home_not_installed">Not installed</string>
      <string name="home_click_to_install">Tap to install</string>
-@@ -117,6 +117,8 @@
-     <string name="module_update">Update</string>
-     <string name="module_downloading">Downloading module: %s</string>
-     <string name="module_start_downloading">Start downloading: %s</string>
-+    <string name="start_downloading">Start downloading</string>
-+    <string name="download_failed">Download failed: %s</string>
-     <string name="module_action_success">Module action executed successfully.</string>
-     <string name="new_version_available">New version %s is available, click to upgrade!</string>
-     <string name="launch_app">Launch</string>
+@@ -16,6 +16,7 @@
+     <string name="home_kernel">Kernel version</string>
+     <string name="home_manager_version">Manager version</string>
+     <string name="home_fingerprint">Fingerprint</string>
++    <string name="home_hook_type">Hook type</string>
+     <string name="home_selinux_status">SELinux status</string>
+     <string name="selinux_status_disabled">Disabled</string>
+     <string name="selinux_status_enforcing">Enforcing</string>
 diff --git a/manager/build.gradle.kts b/manager/build.gradle.kts
 index ada71384..7fee7523 100644
 --- a/manager/build.gradle.kts
@@ -762,6 +1052,20 @@ index ada71384..7fee7523 100644
 +
      return getGitDescribe()
  }
+diff --git a/uapi/supercall.h b/uapi/supercall.h
+index cae5da2f..284048f6 100644
+--- a/uapi/supercall.h
++++ b/uapi/supercall.h
+@@ -163,5 +163,8 @@ static const __u32 KSU_IOCTL_NUKE_EXT4_SYSFS = _IOC(_IOC_WRITE, 'K', 17, 0);
+ static const __u32 KSU_IOCTL_ADD_TRY_UMOUNT = _IOC(_IOC_WRITE, 'K', 18, 0);
+ static const __u32 KSU_IOCTL_SET_INIT_PGRP = _IO('K', 19);
+ static const __u32 KSU_IOCTL_GET_SULOG_FD = _IOW('K', 20, struct ksu_get_sulog_fd_cmd);
+-
++static const __u32 KSU_IOCTL_HOOK_TYPE = _IOC(_IOC_READ, 'K', 101, 0);
++struct ksu_hook_type_cmd {
++    char hook_type[32];
++};
+ #endif
 diff --git a/userspace/ksud/build.rs b/userspace/ksud/build.rs
 index 73fb7d28..1f7d8de2 100644
 --- a/userspace/ksud/build.rs

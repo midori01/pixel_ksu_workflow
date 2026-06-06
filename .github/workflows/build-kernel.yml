@@ -150,15 +150,18 @@ jobs:
           else
             KERNEL_BASE_URL="$MIDORI_MIRROR"
           fi
-          aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/$CLANG_TAR" -o clang.tar.gz && mkdir -p clang && tar -xzf clang.tar.gz -C clang && rm clang.tar.gz &
-          aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/build-tools.tar.gz" -o build-tools.tar.gz && mkdir -p build-tools && tar -xzf build-tools.tar.gz -C build-tools && rm build-tools.tar.gz &
-          if [ "${{ steps.cfg.outputs.rust_enabled }}" = "true" ]; then
-            RUST_TAR="rust-${{ steps.cfg.outputs.rust_version }}.tar.gz"
-            aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/clang-tools.tar.gz" -o clang-tools.tar.gz && mkdir -p clang-tools && tar -xzf clang-tools.tar.gz -C clang-tools && rm clang-tools.tar.gz &
-            aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/$RUST_TAR" -o rust.tar.gz && mkdir -p rust && tar -xzf rust.tar.gz -C rust && rm rust.tar.gz &
-          fi
-          aria2c -s16 -x16 -k1M "$KERNEL_BASE_URL/$KERNEL_TAR" -o common.tar.gz && mkdir -p common && tar -xzf common.tar.gz -C common &
+          retry() { for i in $(seq 1 3); do "$@" && return 0; echo "Retry $i/3..."; sleep 10; done; return 1; }
+          retry aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/$CLANG_TAR" -o clang.tar.gz &
+          retry aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/build-tools.tar.gz" -o build-tools.tar.gz &
+          [ "${{ steps.cfg.outputs.rust_enabled }}" = "true" ] && {
+            retry aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/clang-tools.tar.gz" -o clang-tools.tar.gz &
+            retry aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/rust-${{ steps.cfg.outputs.rust_version }}.tar.gz" -o rust.tar.gz &
+          }
+          retry aria2c -s16 -x16 -k1M "$KERNEL_BASE_URL/$KERNEL_TAR" -o common.tar.gz &
           wait
+          for f in *.tar.gz; do mkdir -p "${f%%.*}" && tar -xzf "$f" -C "${f%%.*}" & done
+          wait
+          rm -f *.tar.gz
           sed -i 's/ -dirty//g' common/scripts/setlocalversion
           [ "${{ inputs.kernel_version }}" = "6.1" ] && rm -f common/android/abi_gki_protected_exports_* || true
 

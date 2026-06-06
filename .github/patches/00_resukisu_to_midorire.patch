@@ -1,17 +1,19 @@
-From: midori01 <midori01@users.noreply.github.com>
-Date: Sat, 30 May 2026 09:42:50 +0900
+From: midori01 <lv@lvlv.lv>
+Date: Sat, 6 Jun 2026 13:09:34 +0900
 Subject: [PATCH] ReSukiSU to MidoriRE
 
 ---
  .github/workflows/auto-label.yml              |   4 +-
- .github/workflows/build-lkm.yml               |  11 +
+ .github/workflows/build-lkm.yml               |  15 +-
  .github/workflows/build-manager.yml           | 243 +++---
  .github/workflows/build-su.yml                |  12 +-
+ .github/workflows/check-line-ending.yml       |   5 +-
  .github/workflows/clang-format.yml            |  16 +-
+ .github/workflows/cleanup-runs.yml            |  24 +
  .github/workflows/clippy.yml                  |  13 +-
  .github/workflows/codeql.yml                  |  13 +-
  .github/workflows/crowdin.yml                 |   8 -
- .github/workflows/ddk-lkm.yml                 |  10 +
+ .github/workflows/ddk-lkm.yml                 |  15 +-
  .github/workflows/ksud.yml                    |  11 +
  .github/workflows/ksuinit.yml                 |   1 +
  .github/workflows/release.yml                 |   3 -
@@ -44,8 +46,7 @@ Subject: [PATCH] ReSukiSU to MidoriRE
  .../resukisu/ui/screen/UmountManagerScreen.kt |   2 +-
  .../resukisu/ui/screen/about/About.kt         |  12 +-
  .../screen/about/OpenSourceLicenseScreen.kt   |   2 +-
- .../resukisu/ui/screen/main/HomePage.kt       |  12 +-
- .../resukisu/ui/screen/main/KpmPage.kt        |   2 +-
+ .../resukisu/ui/screen/main/HomePage.kt       |   9 +-
  .../resukisu/ui/screen/main/ModulePage.kt     |   2 +-
  .../resukisu/ui/screen/main/SettingsPage.kt   |   4 +-
  .../resukisu/ui/screen/main/SuperUserPage.kt  |   2 +-
@@ -79,7 +80,8 @@ Subject: [PATCH] ReSukiSU to MidoriRE
  manager/build.gradle.kts                      |  12 +-
  manager/settings.gradle.kts                   |   2 +-
  userspace/ksud/build.rs                       |  46 +-
- 76 files changed, 309 insertions(+), 1113 deletions(-)
+ 77 files changed, 335 insertions(+), 1120 deletions(-)
+ create mode 100644 .github/workflows/cleanup-runs.yml
  delete mode 100644 manager/app/src/main/ic_launcher-playstore.png
 
 diff --git a/.github/workflows/auto-label.yml b/.github/workflows/auto-label.yml
@@ -97,10 +99,10 @@ index 177cdf9d..fe796837 100644
    label:
      runs-on: ubuntu-latest
 diff --git a/.github/workflows/build-lkm.yml b/.github/workflows/build-lkm.yml
-index eb5694d5..0f082366 100644
+index eb5694d5..6d9b8365 100644
 --- a/.github/workflows/build-lkm.yml
 +++ b/.github/workflows/build-lkm.yml
-@@ -12,7 +12,17 @@ on:
+@@ -12,17 +12,23 @@ on:
          required: false
          default: ''
          type: string
@@ -118,13 +120,23 @@ index eb5694d5..0f082366 100644
  jobs:
    build-lkm:
      strategy:
-@@ -32,3 +42,4 @@ jobs:
+       fail-fast: false
+       matrix:
+         kmi:
+-          - android12-5.10
+-          - android13-5.10
+-          - android13-5.15
+-          - android14-5.15
+           - android14-6.1
+           - android15-6.6
+           - android16-6.12
+@@ -32,3 +38,4 @@ jobs:
        ddk_release: '20260313'
        expected_pr_build_size: ${{ inputs.expected_pr_build_size || '' }}
        expected_pr_build_hash: ${{ inputs.expected_pr_build_hash || '' }}
 +      version_code: ${{ inputs.version_code || '' }}
 diff --git a/.github/workflows/build-manager.yml b/.github/workflows/build-manager.yml
-index fb08e55b..934c8563 100644
+index acdb780e..934c8563 100644
 --- a/.github/workflows/build-manager.yml
 +++ b/.github/workflows/build-manager.yml
 @@ -2,21 +2,47 @@ name: Build Manager
@@ -132,7 +144,7 @@ index fb08e55b..934c8563 100644
  on:
    workflow_dispatch:
 -  push:
--    branches: [ "main", "dev", "ci" ]
+-    branches: [ "main", "dev", "ci", "sync-upstream" ]
 -    paths:
 -      - '.github/workflows/build-manager.yml'
 -      - '.github/workflows/build-lkm.yml'
@@ -377,7 +389,7 @@ index fb08e55b..934c8563 100644
            cp -f "$X86_64_KSUD" target/x86_64-linux-android/release/ksud
  
        - name: Prepare signing inputs
--        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
+-        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci' || github.ref == 'refs/heads/sync-upstream')) || github.ref_type == 'tag' }}
 +        id: prepare
          env:
            PR_KEYSTORE: ${{ needs.generate-key.outputs.keystore }}
@@ -419,7 +431,7 @@ index fb08e55b..934c8563 100644
            fi
  
        - name: Repack and resign
--        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
+-        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci' || github.ref == 'refs/heads/sync-upstream')) || github.ref_type == 'tag' }}
          run: |
            python3 repack_apk_multi.py repack \
              -b ${{ matrix.build_type }} \
@@ -430,7 +442,7 @@ index fb08e55b..934c8563 100644
 -          name: ${{ steps.determine.outputs.title }}-gradle-${{ matrix.build_type }}
 -        
 -      - name: Upload build artifact
--        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci')) || github.ref_type == 'tag' }}
+-        if: ${{ github.event_name == 'pull_request' || (github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/ci' || github.ref == 'refs/heads/sync-upstream')) || github.ref_type == 'tag' }}
 -        uses: actions/upload-artifact@v7
 -        with:
 -          name: ${{ steps.determine.outputs.title }}-${{ matrix.build_type }}
@@ -561,6 +573,29 @@ index 6cd1b503..2c94622d 100644
  jobs:
    build-su:
      name: Build userspace su
+diff --git a/.github/workflows/check-line-ending.yml b/.github/workflows/check-line-ending.yml
+index 811e0203..e0349788 100644
+--- a/.github/workflows/check-line-ending.yml
++++ b/.github/workflows/check-line-ending.yml
+@@ -1,8 +1,7 @@
+ name: Check Line Endings
+ 
+ on:
+-  push:
+-  pull_request:
++  workflow_dispatch:
+ 
+ jobs:
+   check-crlf:
+@@ -10,7 +9,7 @@ jobs:
+ 
+     steps:
+       - name: Checkout code
+-        uses: actions/checkout@v4
++        uses: actions/checkout@v6
+         with:
+           fetch-depth: 0
+ 
 diff --git a/.github/workflows/clang-format.yml b/.github/workflows/clang-format.yml
 index 1783bd78..b550d7be 100644
 --- a/.github/workflows/clang-format.yml
@@ -588,6 +623,36 @@ index 1783bd78..b550d7be 100644
  
  permissions:
    checks: write
+diff --git a/.github/workflows/cleanup-runs.yml b/.github/workflows/cleanup-runs.yml
+new file mode 100644
+index 00000000..8f4f68aa
+--- /dev/null
++++ b/.github/workflows/cleanup-runs.yml
+@@ -0,0 +1,24 @@
++name: Cleanup Workflow Runs
++
++on:
++  workflow_dispatch:
++
++jobs:
++  cleanup:
++    runs-on: ubuntu-latest
++    permissions:
++      actions: write
++    steps:
++      - name: Delete completed and failed runs
++        env:
++          GH_TOKEN: ${{ github.token }}
++          GH_REPO: ${{ github.repository }}
++          CURRENT_RUN_ID: ${{ github.run_id }}
++        run: |
++          for status in completed failure; do
++            echo "Deleting runs with status: $status ..."
++            gh run list --limit 200 --status "$status" --json databaseId -q '.[].databaseId' \
++              | grep -v "$CURRENT_RUN_ID" \
++              | xargs -r -n1 gh run delete
++          done
++          echo "Deletion complete!"
 diff --git a/.github/workflows/clippy.yml b/.github/workflows/clippy.yml
 index 3b295fac..2b13500d 100644
 --- a/.github/workflows/clippy.yml
@@ -656,7 +721,7 @@ index f5bc2437..64911f62 100644
  
  jobs:
 diff --git a/.github/workflows/ddk-lkm.yml b/.github/workflows/ddk-lkm.yml
-index 41329364..2d4af797 100644
+index 41329364..18eac9d7 100644
 --- a/.github/workflows/ddk-lkm.yml
 +++ b/.github/workflows/ddk-lkm.yml
 @@ -22,6 +22,11 @@ on:
@@ -671,7 +736,17 @@ index 41329364..2d4af797 100644
  
  
  jobs:
-@@ -40,6 +45,7 @@ jobs:
+@@ -31,6 +36,9 @@ jobs:
+     container:
+       image: ghcr.io/ylarod/ddk-min:${{ inputs.kmi }}-${{ inputs.ddk_release }}
+       options: --privileged
++      credentials:
++        username: ${{ github.actor }}
++        password: ${{ secrets.GITHUB_TOKEN }}
+ 
+     steps:
+     - name: Checkout source code
+@@ -40,6 +48,7 @@ jobs:
        env:
          EXPECTED_PR_BUILD_SIZE: ${{ inputs.expected_pr_build_size }}
          EXPECTED_PR_BUILD_HASH: ${{ inputs.expected_pr_build_hash }}
@@ -679,7 +754,7 @@ index 41329364..2d4af797 100644
        run: |
          git config --global --add safe.directory /__w/ReSukiSU/ReSukiSU
          cd kernel
-@@ -59,6 +65,10 @@ jobs:
+@@ -59,12 +68,14 @@ jobs:
            EXTRA_ARGS="KSU_EXPECTED_PR_BUILD_SIZE=$EXPECTED_PR_BUILD_SIZE KSU_EXPECTED_PR_BUILD_HASH=$EXPECTED_PR_BUILD_HASH"
          fi
  
@@ -690,6 +765,12 @@ index 41329364..2d4af797 100644
          CONFIG_KSU=m CONFIG_KSU_MULTI_MANAGER_SUPPORT=y CONFIG_KSU_TRACEPOINT_HOOK=y CC=clang make $EXTRA_ARGS
          
          echo "=== Build completed ==="
+-        # Create output directory in GitHub workspace
+         mkdir -p /github/workspace/out
+-        # Copy with KMI-specific naming
+         OUTPUT_NAME="${{ inputs.kmi }}_kernelsu.ko"
+         cp kernelsu.ko "/github/workspace/out/$OUTPUT_NAME"
+         
 diff --git a/.github/workflows/ksud.yml b/.github/workflows/ksud.yml
 index 0268c028..e3101f69 100644
 --- a/.github/workflows/ksud.yml
@@ -793,10 +874,10 @@ index 2e4e6ef6..b30cabbe 100644
  jobs:
    shellcheck:
 diff --git a/kernel/Kbuild b/kernel/Kbuild
-index 39a95da8..f9c231b9 100644
+index 4ac11d61..027e1bd7 100644
 --- a/kernel/Kbuild
 +++ b/kernel/Kbuild
-@@ -56,7 +56,7 @@ ccflags-y += -I$(src) -I$(src)/include
+@@ -50,7 +50,7 @@ ccflags-y += -I$(src) -I$(src)/include
  
  obj-$(CONFIG_KSU) += kernelsu.o
  
@@ -805,7 +886,7 @@ index 39a95da8..f9c231b9 100644
  
  KDIR := $(KDIR)
  
-@@ -79,7 +79,12 @@ endif
+@@ -73,7 +73,12 @@ endif
  
  $(shell cd $(KSU_SRC); [ -f ../.git/shallow ] && $(GIT_BIN) fetch --unshallow)
  KSU_LOCAL_VERSION := $(shell cd $(KSU_SRC); $(GIT_BIN) rev-list --count HEAD)
@@ -819,10 +900,10 @@ index 39a95da8..f9c231b9 100644
  KSU_TAG_NAME    := $(shell cd $(KSU_SRC); $(GIT_BIN) describe --abbrev=0 --tags 2>/dev/null || echo "v4.1.0")
  KSU_COMMIT_SHA  := $(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 diff --git a/kernel/Kconfig b/kernel/Kconfig
-index 6f82d53f..8e58d32a 100644
+index baa1ccf6..4aceba0a 100644
 --- a/kernel/Kconfig
 +++ b/kernel/Kconfig
-@@ -17,7 +17,7 @@ config KSU_DEBUG
+@@ -18,7 +18,7 @@ config KSU_DEBUG
  config KSU_TOOLKIT_SUPPORT
        bool "KernelSU toolkit support"
        depends on KSU
@@ -831,7 +912,7 @@ index 6f82d53f..8e58d32a 100644
        help
          Enable KernelSU Toolkit (https://github.com/backslashxx/ksu_toolkit) support.
          For testing and debugging purposes.
-@@ -28,12 +28,11 @@ config KSU_TOOLKIT_SUPPORT
+@@ -29,12 +29,11 @@ config KSU_TOOLKIT_SUPPORT
          4: CHANGE_KSUFLAGS sys_reboot_extensions
          5: allow userspace pull list entries (always supported)
          6: sulog (Not supported for now, use ksu's upstream sulog feature instead)
@@ -994,10 +1075,10 @@ index 0720b710..3b3a76f7 100644
              android:enabled="false"
              android:exported="true">
 diff --git a/manager/app/src/main/cpp/legacy.c b/manager/app/src/main/cpp/legacy.c
-index ed747b54..398d1b33 100644
+index 0cb185bc..1ca14732 100644
 --- a/manager/app/src/main/cpp/legacy.c
 +++ b/manager/app/src/main/cpp/legacy.c
-@@ -102,7 +102,7 @@ bool legacy_get_hook_type(char* hook_type, size_t size) {
+@@ -97,7 +97,7 @@ bool legacy_get_hook_type(char* hook_type, size_t size) {
      static char cached_hook_type[16] = {0};
      if (cached_hook_type[0] == '\0') {
          if (!ksuctl(CMD_HOOK_TYPE, cached_hook_type, NULL)) {
@@ -1006,7 +1087,7 @@ index ed747b54..398d1b33 100644
          }
      }
  
-@@ -113,4 +113,4 @@ bool legacy_get_hook_type(char* hook_type, size_t size) {
+@@ -108,4 +108,4 @@ bool legacy_get_hook_type(char* hook_type, size_t size) {
  
  void legacy_get_full_version(char* buff) {
      ksuctl(CMD_GET_VERSION_FULL, buff, NULL);
@@ -2709,15 +2790,15 @@ index 2cb6066b..a18fb181 100644
  import android.annotation.SuppressLint
  import android.app.Application
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/Natives.kt b/manager/app/src/main/java/com/resukisu/resukisu/Natives.kt
-index 9cf95fca..ec3c6ee4 100644
+index 56559016..c958ccef 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/Natives.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/Natives.kt
-@@ -23,7 +23,7 @@ object Natives {
-     // 34709: breaking: unify uapi
+@@ -24,7 +24,7 @@ object Natives {
      // 34713: change kernel_su_domain to u:r:ksu:s0
      // 34795: feature id 3 to adb root
--    const val MINIMAL_SUPPORTED_KERNEL = 34795
-+    const val MINIMAL_SUPPORTED_KERNEL = 10000
+     // 34944: Drop KPM support
+-    const val MINIMAL_SUPPORTED_KERNEL = 34944
++    const val MINIMAL_SUPPORTED_KERNEL = 12345
  
      const val KERNEL_SU_DOMAIN = "u:r:ksu:s0"
  
@@ -2813,7 +2894,7 @@ index e70dccf6..ebd6d1d7 100644
  import com.resukisu.resukisu.ui.component.profile.AppProfileConfig
  import com.resukisu.resukisu.ui.component.profile.RootProfileConfig
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/BottomBarDestination.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/BottomBarDestination.kt
-index 0ad79a03..5ff93e12 100644
+index b1702020..829266ce 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/BottomBarDestination.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/BottomBarDestination.kt
 @@ -15,7 +15,7 @@ import androidx.compose.material.icons.outlined.Settings
@@ -2852,7 +2933,7 @@ index 6507cabf..0ce02b5d 100644
  import com.resukisu.resukisu.ui.component.SwipeableSnackbarHost
  import com.resukisu.resukisu.ui.component.rememberCustomDialog
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/Install.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/Install.kt
-index 96922ec9..94982015 100644
+index 35984460..9784093a 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/Install.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/Install.kt
 @@ -80,7 +80,7 @@ import com.maxkeppeker.sheets.core.models.base.rememberUseCaseState
@@ -2981,7 +3062,7 @@ index a51c81cd..2970a998 100644
  import com.resukisu.resukisu.ui.component.settings.AppBackButton
  import com.resukisu.resukisu.ui.navigation.LocalNavigator
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/HomePage.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/HomePage.kt
-index b8e2c6e4..04f52e07 100644
+index 3b9bbb01..7e87bf4c 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/HomePage.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/HomePage.kt
 @@ -94,11 +94,11 @@ import androidx.compose.ui.unit.Dp
@@ -3016,37 +3097,14 @@ index b8e2c6e4..04f52e07 100644
                      if (viewModel.systemStatus.kernelPatchImplement == Natives.KernelPatchImplement.KERNEL_PATCH_OFFICIAL) {
                          WarningCard(
                              message = stringResource(
-@@ -922,7 +922,7 @@ private fun InfoCard(
-                     icon = Icons.Default.Extension,
+@@ -923,7 +923,6 @@ private fun InfoCard(
                  )
              }
+ 
 -
-+/*
-             if (lkmMode == false && !isSimpleMode && !showKpmInfo) {
-                 val kpmNotSupport =
-                     systemInfo.kpmVersion.isEmpty() || systemInfo.kpmVersion.startsWith("Error")
-@@ -952,7 +952,7 @@ private fun InfoCard(
-                     icon = Icons.Default.Archive
-                 )
-             }
--
-+*/
              if (!isSimpleMode && !isHideSusfsStatus && systemInfo.susfsEnabled && systemInfo.susfsVersion.isNotEmpty()) {
                  InfoCardItem(
                      stringResource(R.string.home_susfs_version),
-diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/KpmPage.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/KpmPage.kt
-index 81f0d7a1..3d812b56 100644
---- a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/KpmPage.kt
-+++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/KpmPage.kt
-@@ -70,7 +70,7 @@ import androidx.compose.ui.unit.Dp
- import androidx.compose.ui.unit.dp
- import androidx.core.content.edit
- import androidx.lifecycle.viewmodel.compose.viewModel
--import com.resukisu.resukisu.R
-+import com.midori.su.manager.R
- import com.resukisu.resukisu.ui.component.AnimatedFab
- import com.resukisu.resukisu.ui.component.ConfirmDialogHandle
- import com.resukisu.resukisu.ui.component.ConfirmResult
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/ModulePage.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/ModulePage.kt
 index 8822afc4..b40daa91 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/ModulePage.kt
@@ -3168,7 +3226,7 @@ index a2b82f57..8848833e 100644
  import com.resukisu.resukisu.ui.util.getSuSFSFeatures
  import com.resukisu.resukisu.ui.util.getSuSFSVersion
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/util/KsuCli.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/util/KsuCli.kt
-index a25f9f48..be121c6e 100644
+index 63554a63..ea96f807 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/util/KsuCli.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/util/KsuCli.kt
 @@ -7,7 +7,7 @@ import android.os.Parcelable
@@ -3351,7 +3409,7 @@ index c647f7c4..a7225ca2 100644
  import com.resukisu.resukisu.ui.viewmodel.ModuleViewModel
  import com.resukisu.resukisu.ui.viewmodel.SuperUserViewModel
 diff --git a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/kernelFlash/KernelFlash.kt b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/kernelFlash/KernelFlash.kt
-index 08929e60..6c42d34c 100644
+index 76f580ef..0b15a824 100644
 --- a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/kernelFlash/KernelFlash.kt
 +++ b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/kernelFlash/KernelFlash.kt
 @@ -65,7 +65,7 @@ import androidx.compose.ui.text.font.FontFamily
@@ -3377,7 +3435,7 @@ index ff09bf0d..fe177164 100644
  /**
   * 槽位选择对话框组件
 diff --git a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/kernelFlash/state/KernelFlashState.kt b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/kernelFlash/state/KernelFlashState.kt
-index ae994cd7..04852b8a 100644
+index f0ee418a..4b1ccf39 100644
 --- a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/kernelFlash/state/KernelFlashState.kt
 +++ b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/kernelFlash/state/KernelFlashState.kt
 @@ -5,7 +5,7 @@ import android.app.Activity
@@ -3390,7 +3448,7 @@ index ae994cd7..04852b8a 100644
  import com.resukisu.resukisu.ui.util.rootAvailable
  import com.resukisu.resukisu.utils.AssetsUtil
 diff --git a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/MoreSettings.kt b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/MoreSettings.kt
-index e1e23ed8..c5eff9fa 100644
+index fb492977..17a11341 100644
 --- a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/MoreSettings.kt
 +++ b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/MoreSettings.kt
 @@ -86,7 +86,7 @@ import androidx.core.content.FileProvider
@@ -3403,7 +3461,7 @@ index e1e23ed8..c5eff9fa 100644
  import com.resukisu.resukisu.ui.component.ConfirmResult
  import com.resukisu.resukisu.ui.component.rememberConfirmDialog
 diff --git a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/MoreSettingsHandlers.kt b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/MoreSettingsHandlers.kt
-index e8d02c21..a8cc5882 100644
+index fc1d98c3..670d7ab4 100644
 --- a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/MoreSettingsHandlers.kt
 +++ b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/MoreSettingsHandlers.kt
 @@ -9,7 +9,7 @@ import androidx.compose.runtime.Composable
@@ -3429,7 +3487,7 @@ index 08ae942e..9a532735 100644
  import com.resukisu.resukisu.ui.theme.ThemeConfig
  import zako.zako.zako.zakoui.screen.moreSettings.MoreSettingsHandlers
 diff --git a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/state/MoreSettingsState.kt b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/state/MoreSettingsState.kt
-index 2a7005e1..4440df3c 100644
+index 9301d0b8..4bc7fd83 100644
 --- a/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/state/MoreSettingsState.kt
 +++ b/manager/app/src/main/java/zako/zako/zako/zakoui/screen/moreSettings/state/MoreSettingsState.kt
 @@ -8,7 +8,7 @@ import androidx.compose.runtime.mutableFloatStateOf

@@ -131,6 +131,11 @@ on:
           - release
           - pre-release
           - no-release
+      cleanup_tags:
+        description: "Cleanup Old Releases"
+        type: boolean
+        required: true
+        default: true
 
 permissions:
   contents: write
@@ -395,3 +400,8 @@ jobs:
             release_zips/*.zip
             release_zips/*.apk
           prerelease: ${{ inputs.release_type == 'pre-release' }}
+
+  cleanup:
+    needs: release
+    if: success() || failure()
+    uses: ./.github/workflows/cleanup-tags.yml

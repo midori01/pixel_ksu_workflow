@@ -1,0 +1,26 @@
+name: Cleanup Releases and Tags
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete old releases and tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "Fetching releases..."
+          gh release list --limit 200 --exclude-drafts --exclude-pre-releases \
+            --json tagName \
+            -q '[.[].tagName] | sort | reverse | .[3:] | .[]' \
+            | while read -r tag; do
+              echo "Deleting release and tag: $tag"
+              gh release delete "$tag" --yes --cleanup-tag
+            done
+          echo "Done! Kept latest 3 releases."

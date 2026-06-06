@@ -1,0 +1,69 @@
+From: midori01 <lv@lvlv.lv>
+Date: Sat, 6 Jun 2026 11:45:06 +0900
+Subject: [PATCH] Import hook type for backslashxx/KernelSU driver
+
+---
+ kernel/include/uapi/supercall.h |  5 ++++-
+ kernel/supercall/dispatch.c     | 25 +++++++++++++++++++++++++
+ 2 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/include/uapi/supercall.h b/kernel/include/uapi/supercall.h
+index dbfc5f11..a2413d3d 100644
+--- a/kernel/include/uapi/supercall.h
++++ b/kernel/include/uapi/supercall.h
+@@ -158,5 +158,8 @@ struct ksu_get_sulog_fd_cmd {
+ #define KSU_IOCTL_ADD_TRY_UMOUNT _IOC(_IOC_WRITE, 'K', 18, 0)
+ #define KSU_IOCTL_SET_INIT_PGRP _IO('K', 19)
+ #define KSU_IOCTL_GET_SULOG_FD _IOW('K', 20, struct ksu_get_sulog_fd_cmd)
+-
++#define KSU_IOCTL_HOOK_TYPE _IOC(_IOC_READ, 'K', 101, 0)
++struct ksu_hook_type_cmd {
++    char hook_type[32];
++};
+ #endif
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index 2ea7d8b4..d45ce737 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -665,6 +665,30 @@ static int do_get_sulog_fd(void __user *arg)
+ 	return ksu_install_sulog_fd();
+ }
+ 
++static int do_get_hook_type(void __user *arg)
++{
++    struct ksu_hook_type_cmd cmd = { 0 };
++
++#if defined(CONFIG_KSU_SUSFS)
++    const char *type = "De-Inline";
++#elif defined(CONFIG_KSU_HACK_ARM64_BRANCH_LINK) || defined(CONFIG_KSU_TAMPER_SYSCALL_TABLE)
++    const char *type = "Hookless";
++#elif defined(CONFIG_KSU_KPROBES_KSUD)
++    const char *type = "Hybridized";
++#else
++    const char *type = "Manual";
++#endif
++
++    strscpy(cmd.hook_type, type, sizeof(cmd.hook_type));
++
++    if (copy_to_user(arg, &cmd, sizeof(cmd))) {
++        pr_err("get_hook_type: copy_to_user failed\n");
++        return -EFAULT;
++    }
++
++    return 0;
++}
++
+ // IOCTL handlers mapping table
+ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
+ 	{ .cmd = KSU_IOCTL_GRANT_ROOT, .name = "GRANT_ROOT", .handler = do_grant_root, .perm_check = allowed_for_su },
+@@ -689,6 +713,7 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
+ 	{ .cmd = KSU_IOCTL_ADD_TRY_UMOUNT, .name = "ADD_TRY_UMOUNT", .handler = add_try_umount, .perm_check = manager_or_root },
+ 	{ .cmd = KSU_IOCTL_SET_INIT_PGRP, .name = "SET_INIT_PGRP", .handler = do_set_init_pgrp, .perm_check = only_root },
+ 	{ .cmd = KSU_IOCTL_GET_SULOG_FD, .name = "GET_SULOG_FD", .handler = do_get_sulog_fd, .perm_check = only_root },
++	{ .cmd = KSU_IOCTL_HOOK_TYPE, .name = "HOOK_TYPE", .handler = do_get_hook_type, .perm_check = manager_or_root },
+ 	{ .cmd = 0, .name = NULL, .handler = NULL, .perm_check = NULL } // Sentinel
+ };
+ 
+-- 
+2.54.0
+

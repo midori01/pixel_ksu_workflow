@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eu
 
-echo "[+] Setting up MidoriXX (Change Manager and VersionCode)..."
+echo "[+] Setting up MidoriXX (Change Manager, VersionCode, and add HookType)..."
 
 if [ -f "KernelSU/kernel/setup.sh" ]; then
   sed -i 's|https://github.com/backslashxx/KernelSU|https://github.com/MidoriKSU/KernelSU|g' KernelSU/kernel/setup.sh
@@ -23,5 +23,7 @@ echo "[+] Dynamic KSU_VERSION (based on MidoriSU): $NEW_KSU_VERSION"
 if [ -f "KernelSU/kernel/Makefile" ]; then
   sed -i "s/-DKSU_VERSION=[0-9]*/-DKSU_VERSION=$NEW_KSU_VERSION/g" KernelSU/kernel/Makefile
 fi
+
+patch -p1 -d KernelSU --forward < "${GITHUB_WORKSPACE}/.github/patches/21_hook_type_for_ksu_driver.patch" || true
 
 echo "[+] MidoriXX setup complete."

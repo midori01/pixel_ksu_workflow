@@ -1,0 +1,24 @@
+name: Cleanup Workflow Runs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete completed and failed runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          for status in completed failure; do
+            echo "Deleting runs with status: $status ..."
+            gh run list --limit 200 --status "$status" --json databaseId -q '.[].databaseId' \
+              | grep -v "$CURRENT_RUN_ID" \
+              | xargs -r -n1 gh run delete
+          done
+          echo "Deletion complete!"
