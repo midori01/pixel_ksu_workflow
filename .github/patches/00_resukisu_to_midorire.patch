@@ -1,11 +1,11 @@
 From: midori01 <lv@lvlv.lv>
 Date: Sat, 6 Jun 2026 13:09:34 +0900
-Subject: [PATCH] ReSukiSU to MidoriRE
+Subject: [PATCH] MidoriRE
 
 ---
  .github/workflows/auto-label.yml              |   4 +-
  .github/workflows/build-lkm.yml               |  15 +-
- .github/workflows/build-manager.yml           | 243 +++---
+ .github/workflows/build-manager.yml           | 248 +++---
  .github/workflows/build-su.yml                |  12 +-
  .github/workflows/check-line-ending.yml       |   5 +-
  .github/workflows/clang-format.yml            |  16 +-
@@ -30,7 +30,6 @@ Subject: [PATCH] ReSukiSU to MidoriRE
  .../resukisu/resukisu/KernelSUApplication.kt  |   1 +
  .../java/com/resukisu/resukisu/Natives.kt     |   2 +-
  .../ui/component/InstallConfirmationDialog.kt |   2 +-
- .../ui/component/VerticalExpandableFab.kt     |   2 +-
  .../ui/component/profile/AppProfileConfig.kt  |   2 +-
  .../ui/component/profile/RootProfileConfig.kt |   2 +-
  .../ui/component/profile/TemplateConfig.kt    |   2 +-
@@ -80,7 +79,7 @@ Subject: [PATCH] ReSukiSU to MidoriRE
  manager/build.gradle.kts                      |  12 +-
  manager/settings.gradle.kts                   |   2 +-
  userspace/ksud/build.rs                       |  46 +-
- 77 files changed, 335 insertions(+), 1120 deletions(-)
+ 76 files changed, 334 insertions(+), 1124 deletions(-)
  create mode 100644 .github/workflows/cleanup-runs.yml
  delete mode 100644 manager/app/src/main/ic_launcher-playstore.png
 
@@ -136,7 +135,7 @@ index eb5694d5..6d9b8365 100644
        expected_pr_build_hash: ${{ inputs.expected_pr_build_hash || '' }}
 +      version_code: ${{ inputs.version_code || '' }}
 diff --git a/.github/workflows/build-manager.yml b/.github/workflows/build-manager.yml
-index acdb780e..934c8563 100644
+index 8f82aa24..b7827c11 100644
 --- a/.github/workflows/build-manager.yml
 +++ b/.github/workflows/build-manager.yml
 @@ -2,21 +2,47 @@ name: Build Manager
@@ -185,7 +184,7 @@ index acdb780e..934c8563 100644
 +              echo "::warning::Failed to fetch commit count, using default 0"
 +              COMMIT_COUNT=0
 +            fi
-+            VERSION=$((30000 + COMMIT_COUNT))
++            VERSION=$((30999 + COMMIT_COUNT))
 +            echo "VERSION_CODE=$VERSION" >> $GITHUB_OUTPUT
 +            echo "[+] Generated version code: $VERSION (commits: $COMMIT_COUNT)"
 +          fi
@@ -435,7 +434,7 @@ index acdb780e..934c8563 100644
          run: |
            python3 repack_apk_multi.py repack \
              -b ${{ matrix.build_type }} \
-@@ -329,76 +352,48 @@ jobs:
+@@ -329,81 +352,48 @@ jobs:
        - name: Delete gradle build
          uses: GeekyEggo/delete-artifact@v6
          with:
@@ -488,6 +487,10 @@ index acdb780e..934c8563 100644
 -          else
 -            echo "title=Manager" >> $GITHUB_OUTPUT
 -            echo "topicid=${{ vars.MESSAGE_THREAD_ID }}" >> $GITHUB_OUTPUT
+-          fi
+-
+-          if [[ "${{ github.ref }}" != "refs/heads/main" && "${{ github.ref_type }}" != "tag" ]]; then
+-            echo "topicid=${{ vars.MESSAGE_DEVELOPING_MANAGER_THREAD_ID }}" >> $GITHUB_OUTPUT
 +          if [ -z "$LATEST_TAG" ]; then
 +            echo "::error::No tags found!"
 +            exit 1
@@ -514,6 +517,7 @@ index acdb780e..934c8563 100644
 -          CHAT_ID: ${{ vars.CHAT_ID }}
 -          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
 -          MESSAGE_THREAD_ID: ${{ steps.determine.outputs.topicid }}
+-          DEVELOPING_THREAD_ID: ${{ vars.MESSAGE_DEVELOPING_MANAGER_THREAD_ID }}
 -          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 -          TITLE: ${{ steps.determine.outputs.title }}
 -          BRANCH: ${{ github.ref_name }}
@@ -813,7 +817,7 @@ index 726beb93..f0b09228 100644
    build:
      runs-on: ubuntu-latest
 diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
-index e917ef66..faadb915 100644
+index 752f4be5..b0ab471a 100644
 --- a/.github/workflows/release.yml
 +++ b/.github/workflows/release.yml
 @@ -1,8 +1,5 @@
@@ -2815,19 +2819,6 @@ index f183db66..80d4a605 100644
  import java.io.BufferedReader
  import java.io.IOException
  import java.io.InputStream
-diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/component/VerticalExpandableFab.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/component/VerticalExpandableFab.kt
-index 10485bf9..7889eb57 100644
---- a/manager/app/src/main/java/com/resukisu/resukisu/ui/component/VerticalExpandableFab.kt
-+++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/component/VerticalExpandableFab.kt
-@@ -46,7 +46,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
- import androidx.compose.ui.res.stringResource
- import androidx.compose.ui.unit.Dp
- import androidx.compose.ui.unit.dp
--import com.resukisu.resukisu.R
-+import com.midori.su.manager.R
- 
- data class FabMenuItem(
-     val icon: ImageVector,
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/component/profile/AppProfileConfig.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/component/profile/AppProfileConfig.kt
 index 4bbdbf31..0c90ae8e 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/component/profile/AppProfileConfig.kt
@@ -2855,7 +2846,7 @@ index a45cc236..f75510f2 100644
  import com.resukisu.resukisu.profile.Groups
  import com.resukisu.resukisu.ui.component.rememberCustomDialog
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/component/profile/TemplateConfig.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/component/profile/TemplateConfig.kt
-index d023d18c..3244610e 100644
+index 3d678553..687150c4 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/component/profile/TemplateConfig.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/component/profile/TemplateConfig.kt
 @@ -19,7 +19,7 @@ import androidx.compose.ui.draw.clip
@@ -2881,10 +2872,10 @@ index 4bb47a71..180495ac 100644
  /**
   * A standardized back button for the application.
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/AppProfile.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/AppProfile.kt
-index e70dccf6..ebd6d1d7 100644
+index 3b5d657c..89f47cfb 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/AppProfile.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/AppProfile.kt
-@@ -60,7 +60,7 @@ import androidx.lifecycle.compose.dropUnlessResumed
+@@ -61,7 +61,7 @@ import androidx.lifecycle.compose.dropUnlessResumed
  import coil.compose.AsyncImage
  import coil.request.ImageRequest
  import com.resukisu.resukisu.Natives
@@ -2972,7 +2963,7 @@ index 2e6c8c34..0528d75e 100644
  import com.resukisu.resukisu.ui.component.settings.SettingsJumpPageWidget
  import com.resukisu.resukisu.ui.component.settings.lazySegmentColumn
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/TemplateEditor.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/TemplateEditor.kt
-index 458d669d..ae0d50e6 100644
+index 0d5c3208..f78777bf 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/TemplateEditor.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/TemplateEditor.kt
 @@ -46,7 +46,7 @@ import androidx.compose.ui.text.input.KeyboardType
@@ -3135,18 +3126,18 @@ index 8aa5d165..0ef4a267 100644
  import com.resukisu.resukisu.magica.BootCompletedReceiver
  import com.resukisu.resukisu.ui.component.ConfirmResult
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/SuperUserPage.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/SuperUserPage.kt
-index 90bc2790..9ab45c0d 100644
+index f10ced58..2a97b6fb 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/SuperUserPage.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/main/SuperUserPage.kt
-@@ -101,7 +101,7 @@ import coil.compose.AsyncImage
+@@ -88,7 +88,7 @@ import coil.compose.AsyncImage
  import coil.request.CachePolicy
  import coil.request.ImageRequest
  import com.resukisu.resukisu.Natives
 -import com.resukisu.resukisu.R
 +import com.midori.su.manager.R
  import com.resukisu.resukisu.ksuApp
- import com.resukisu.resukisu.ui.component.FabMenuPresets
  import com.resukisu.resukisu.ui.component.SearchAppBar
+ import com.resukisu.resukisu.ui.component.SwipeableSnackbarHost
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/moduleRepo/ModuleRepo.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/moduleRepo/ModuleRepo.kt
 index a715046a..743dc272 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/screen/moduleRepo/ModuleRepo.kt
@@ -3226,7 +3217,7 @@ index a2b82f57..8848833e 100644
  import com.resukisu.resukisu.ui.util.getSuSFSFeatures
  import com.resukisu.resukisu.ui.util.getSuSFSVersion
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/util/KsuCli.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/util/KsuCli.kt
-index 63554a63..ea96f807 100644
+index 6da043bf..c6f0ffbd 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/util/KsuCli.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/util/KsuCli.kt
 @@ -7,7 +7,7 @@ import android.os.Parcelable
@@ -3330,11 +3321,11 @@ index b6adf12d..251da8d0 100644
  import com.resukisu.resukisu.ui.util.module.ReleaseInfo
  import com.resukisu.resukisu.ui.util.module.fetchModuleDetail
 diff --git a/manager/app/src/main/java/com/resukisu/resukisu/ui/viewmodel/SuperUserViewModel.kt b/manager/app/src/main/java/com/resukisu/resukisu/ui/viewmodel/SuperUserViewModel.kt
-index 817e60e7..4741f3ca 100644
+index c84a884b..f8e563ca 100644
 --- a/manager/app/src/main/java/com/resukisu/resukisu/ui/viewmodel/SuperUserViewModel.kt
 +++ b/manager/app/src/main/java/com/resukisu/resukisu/ui/viewmodel/SuperUserViewModel.kt
-@@ -45,10 +45,10 @@ import kotlin.coroutines.resume
- import kotlin.coroutines.suspendCoroutine
+@@ -44,10 +44,10 @@ import kotlin.coroutines.resume
+ internal const val RECENTLY_INSTALLED_WINDOW_MILLIS = 60 * 60 * 1000L
  
  enum class AppCategory(val displayNameRes: Int, val persistKey: String) {
 -    ALL(com.resukisu.resukisu.R.string.category_all_apps, "ALL"),
@@ -3348,7 +3339,7 @@ index 817e60e7..4741f3ca 100644
  
      companion object {
          fun fromPersistKey(key: String): AppCategory = entries.find { it.persistKey == key } ?: ALL
-@@ -56,13 +56,13 @@ enum class AppCategory(val displayNameRes: Int, val persistKey: String) {
+@@ -55,13 +55,13 @@ enum class AppCategory(val displayNameRes: Int, val persistKey: String) {
  }
  
  enum class SortType(val displayNameRes: Int, val persistKey: String) {
@@ -4299,7 +4290,7 @@ index 71e9836f..f1ee7fbe 100644
 +    </group>
 +</vector>
 diff --git a/manager/app/src/main/res/values/strings.xml b/manager/app/src/main/res/values/strings.xml
-index c95d862d..55ec8bdd 100644
+index 2b614862..05afdbe8 100644
 --- a/manager/app/src/main/res/values/strings.xml
 +++ b/manager/app/src/main/res/values/strings.xml
 @@ -1,6 +1,6 @@

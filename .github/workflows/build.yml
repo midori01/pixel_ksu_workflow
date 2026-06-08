@@ -105,7 +105,7 @@ on:
       kernel_localversion:
         description: 'Spoof Kernel Name'
         required: true
-        default: '-gki-midori-build'
+        default: '-midori-susfs-droidspaces'
         type: string
       build_timestamp:
         description: 'Spoof Build Time'
@@ -374,7 +374,7 @@ jobs:
             out "susfs_date=\`$(cat commit_info/susfs_date)\`"
           fi
           if [ -f "commit_info/midorisu_ksu_commit" ] && [ -f "commit_info/ksu_commit_count" ]; then
-            out "driver_version=$((30000 + $(cat commit_info/ksu_commit_count)))"
+            out "driver_version=$((30999 + $(cat commit_info/ksu_commit_count)))"
           fi
           ksu_line MidoriSU "$(cat commit_info/midorisu_ksu_repo 2>/dev/null)" commit_info/midorisu_ksu_commit
           ksu_line MidoriXX "$(cat commit_info/midorixx_ksu_repo 2>/dev/null)" commit_info/midorixx_ksu_commit
@@ -394,9 +394,9 @@ jobs:
             - **KSU Driver**: `${{ steps.ksu_info.outputs.driver_version || env.KSUD_VERSION }}`　**KSUD Version**: `${{ env.KSUD_VERSION }}`
             - **Manager 1**: `${{ env.MIDORISU_APK }}`
             - **Manager 2**: `${{ env.MIDORIRE_APK }}`
-            - **Kernel Name (Spoofed)**: `${{ matrix.kv }}.${{ steps.meta.outputs.sub_level }}${{ inputs.kernel_localversion }}`
-            - **Build Time (Spoofed)**: `${{ inputs.build_timestamp }}`
-            - **Builder (Spoofed)**: `${{ inputs.build_user }}@${{ inputs.build_host }}`
+            - **Spoofed uname**: `${{ matrix.kv }}.${{ steps.meta.outputs.sub_level }}${{ inputs.kernel_localversion }}`
+            - **Spoofed Build Time**: `${{ inputs.build_timestamp }}`
+            - **Spoofed Builder**: `${{ inputs.build_user }}@${{ inputs.build_host }}`
             - **Droidspaces**: ${{ inputs.use_droidspaces && '✅' || '❌' }}　**NTSync**: ${{ inputs.use_droidspaces && '✅' || '❌' }}　**ReKernel**: ${{ inputs.use_rekernel && '✅' || '❌' }}
             - **TMPFS**: ✅　**BBR**: ✅　**IPSET**: ✅　**Ccache**: ${{ inputs.use_ccache && '✅' || '❌' }}
             - **eBPF**: ${{ env.EBPF_FILE && format('✅ `({0})`', env.EBPF_FILE) || '❌' }}

@@ -154,7 +154,7 @@ jobs:
           else
             KERNEL_BASE_URL="$MIDORI_MIRROR"
           fi
-          retry() { for i in $(seq 1 3); do "$@" && return 0; echo "Retry $i/3..."; sleep 10; done; return 1; }
+          retry() { for i in $(seq 1 5); do "$@" && return 0; echo "Retry $i/5..."; sleep 20; done; return 1; }
           retry aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/$CLANG_TAR" -o clang.tar.gz &
           retry aria2c -s16 -x16 -k1M "$MIDORI_MIRROR/build-tools.tar.gz" -o build-tools.tar.gz &
           [ "${{ steps.cfg.outputs.rust_enabled }}" = "true" ] && {

@@ -23,7 +23,7 @@ git clone --bare https://github.com/midori01/KernelSU.git /tmp/midorisu
 COMMIT_COUNT=$(git -C /tmp/midorisu rev-list --count HEAD)
 rm -rf /tmp/midorisu
 
-NEW_KSU_VERSION=$((30000 + COMMIT_COUNT))
+NEW_KSU_VERSION=$((30999 + COMMIT_COUNT))
 echo "[+] Dynamic KSU_VERSION (based on MidoriSU): $NEW_KSU_VERSION"
 
 sed -i "s|^KSU_VERSION := .*|KSU_VERSION := ${NEW_KSU_VERSION}|" KernelSU/kernel/Kbuild

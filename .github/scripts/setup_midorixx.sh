@@ -17,13 +17,13 @@ git clone --bare https://github.com/midori01/KernelSU.git /tmp/midorisu
 COMMIT_COUNT=$(git -C /tmp/midorisu rev-list --count HEAD)
 rm -rf /tmp/midorisu
 
-NEW_KSU_VERSION=$((30000 + COMMIT_COUNT))
+NEW_KSU_VERSION=$((30999 + COMMIT_COUNT))
 echo "[+] Dynamic KSU_VERSION (based on MidoriSU): $NEW_KSU_VERSION"
 
 if [ -f "KernelSU/kernel/Makefile" ]; then
   sed -i "s/-DKSU_VERSION=[0-9]*/-DKSU_VERSION=$NEW_KSU_VERSION/g" KernelSU/kernel/Makefile
 fi
 
-patch -p1 -d KernelSU --forward < "${GITHUB_WORKSPACE}/.github/patches/21_hook_type_for_ksu_driver.patch" || true
+patch -p1 -d KernelSU --forward < "${GITHUB_WORKSPACE}/.github/patches/extra_features_for_xx_driver.patch" || true
 
 echo "[+] MidoriXX setup complete."
