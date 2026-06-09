@@ -6,12 +6,17 @@
       "162": {
         "asb_date": "2026-03",
         "default_r": "r14",
-        "supported_r": ["r14", "none"]
+        "supported_r": [
+          "r14",
+          "none"
+        ]
       },
-       "173": {
+      "173": {
         "asb_date": "lts",
         "default_r": "none",
-        "supported_r": ["none"]
+        "supported_r": [
+          "none"
+        ]
       }
     },
     "default_clang": "r487747c",
@@ -25,13 +30,18 @@
     "revisions": {
       "127": {
         "asb_date": "2026-04",
-        "default_r": "r14",
-        "supported_r": ["r14", "none"]
+        "default_r": "r15",
+        "supported_r": [
+          "r15",
+          "none"
+        ]
       },
-       "139": {
+      "139": {
         "asb_date": "lts",
         "default_r": "none",
-        "supported_r": ["none"]
+        "supported_r": [
+          "none"
+        ]
       }
     },
     "default_clang": "r510928",
@@ -46,7 +56,10 @@
       "23": {
         "asb_date": "2025-06",
         "default_r": "r58",
-        "supported_r": ["r58", "none"]
+        "supported_r": [
+          "r58",
+          "none"
+        ]
       }
     },
     "default_clang": "r536225",

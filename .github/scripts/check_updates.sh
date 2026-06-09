@@ -33,11 +33,18 @@ download_and_upload() {
 
   echo "  Downloading $tar_name ..."
   if curl -fsSL --connect-timeout 30 "$google_url" -o "$local_file"; then
-    echo "  Uploading to release $release_tag ..."
-    gh release upload "$release_tag" "$local_file" --repo "$REPO" --clobber 2>/dev/null || true
-    echo "  Done: $tar_name"
+    if [ -s "$local_file" ]; then
+      echo "  Uploading to release $release_tag ..."
+      if gh release upload "$release_tag" "$local_file" --repo "$REPO" --clobber; then
+        echo "  Done: $tar_name"
+      else
+        echo "  ERROR: Failed to upload $tar_name"
+      fi
+    else
+      echo "  ERROR: Downloaded file is empty: $tar_name"
+    fi
   else
-    echo "  Failed to download $tar_name"
+    echo "  ERROR: Failed to download $tar_name"
   fi
 }
 
@@ -49,11 +56,18 @@ download_lts_and_upload() {
 
   echo "  Downloading LTS $tar_name ..."
   if curl -fsSL --connect-timeout 30 "$head_url" -o "$local_file"; then
-    echo "  Uploading to release $release_tag ..."
-    gh release upload "$release_tag" "$local_file" --repo "$REPO" --clobber 2>/dev/null || true
-    echo "  Done: $tar_name"
+    if [ -s "$local_file" ]; then
+      echo "  Uploading to release $release_tag ..."
+      if gh release upload "$release_tag" "$local_file" --repo "$REPO" --clobber; then
+        echo "  Done: $tar_name"
+      else
+        echo "  ERROR: Failed to upload $tar_name"
+      fi
+    else
+      echo "  ERROR: Downloaded file is empty: $tar_name"
+    fi
   else
-    echo "  Failed to download $tar_name"
+    echo "  ERROR: Failed to download $tar_name"
   fi
 }
 

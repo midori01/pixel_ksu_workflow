@@ -1,29 +1,38 @@
 From: midori01 <lv@lvlv.lv>
-Date: Mon, 8 Jun 2026 15:07:12 +0900
+Date: Tue, 9 Jun 2026 22:14:29 +0900
 Subject: [PATCH] Import hook type and SUSFS version display for xx driver
 
 ---
- kernel/include/uapi/supercall.h |  9 ++++++-
+ kernel/include/uapi/supercall.h | 10 ++++++++
  kernel/supercall/dispatch.c     | 42 +++++++++++++++++++++++++++++++++
- 2 files changed, 50 insertions(+), 1 deletion(-)
+ 2 files changed, 52 insertions(+)
 
 diff --git a/kernel/include/uapi/supercall.h b/kernel/include/uapi/supercall.h
-index dbfc5f11..4a09031f 100644
+index dbfc5f11..57de086e 100644
 --- a/kernel/include/uapi/supercall.h
 +++ b/kernel/include/uapi/supercall.h
-@@ -158,5 +158,12 @@ struct ksu_get_sulog_fd_cmd {
- #define KSU_IOCTL_ADD_TRY_UMOUNT _IOC(_IOC_WRITE, 'K', 18, 0)
- #define KSU_IOCTL_SET_INIT_PGRP _IO('K', 19)
- #define KSU_IOCTL_GET_SULOG_FD _IOW('K', 20, struct ksu_get_sulog_fd_cmd)
--
-+#define KSU_IOCTL_HOOK_TYPE _IOC(_IOC_READ, 'K', 101, 0)
+@@ -129,6 +129,14 @@ struct ksu_get_sulog_fd_cmd {
+ 	__u32 flags; /* Input: reserved for future use, must be 0 */
+ };
+ 
 +struct ksu_hook_type_cmd {
 +    char hook_type[32];
 +};
-+#define KSU_IOCTL_SUSFS_VERSION _IOC(_IOC_READ, 'K', 102, 0)
++
 +struct ksu_susfs_version_cmd {
 +    char version[32];
 +};
++
+ #define KSU_UMOUNT_WIPE 0	// ignore everything and wipe list
+ #define KSU_UMOUNT_ADD 1	// add entry (path + flags)
+ #define KSU_UMOUNT_DEL 2	// delete entry, strcmp
+@@ -158,5 +166,7 @@ struct ksu_get_sulog_fd_cmd {
+ #define KSU_IOCTL_ADD_TRY_UMOUNT _IOC(_IOC_WRITE, 'K', 18, 0)
+ #define KSU_IOCTL_SET_INIT_PGRP _IO('K', 19)
+ #define KSU_IOCTL_GET_SULOG_FD _IOW('K', 20, struct ksu_get_sulog_fd_cmd)
++#define KSU_IOCTL_HOOK_TYPE _IOC(_IOC_READ, 'K', 101, 0)
++#define KSU_IOCTL_SUSFS_VERSION _IOC(_IOC_READ, 'K', 102, 0)
+ 
  #endif
 diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
 index 2ea7d8b4..5dc2c3a6 100644
