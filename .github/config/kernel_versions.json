@@ -1,17 +1,24 @@
 {
   "6.1": {
     "android_version": "android14",
-    "default_sub_level": "173",
+    "default_sub_level": "174",
     "revisions": {
       "162": {
         "asb_date": "2026-03",
-        "default_r": "r14",
+        "default_r": "r15",
         "supported_r": [
-          "r14",
+          "r15",
           "none"
         ]
       },
       "173": {
+        "asb_date": "lts",
+        "default_r": "none",
+        "supported_r": [
+          "none"
+        ]
+      },
+      "174": {
         "asb_date": "lts",
         "default_r": "none",
         "supported_r": [
