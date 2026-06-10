@@ -20,7 +20,7 @@ jobs:
       - name: Clone Repositories
         run: |
           git clone --recurse-submodules --depth=1 https://github.com/libbpf/bpftool.git /tmp/bpftool
-          git clone --depth=1 https://github.com/midori01/Scene-Port-Hider-by-eBPF.git ebpf
+          git clone --depth=1 https://github.com/Andrea-lyz/Scene-Port-Hider-by-eBPF.git ebpf
 
       - name: Build bpftool
         run: make -j$(nproc) -C /tmp/bpftool/src

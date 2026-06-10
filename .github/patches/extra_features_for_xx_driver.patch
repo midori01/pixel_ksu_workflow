@@ -51,7 +51,7 @@ index 2ea7d8b4..5dc2c3a6 100644
 +#elif defined(CONFIG_KSU_HACK_ARM64_BRANCH_LINK) || defined(CONFIG_KSU_TAMPER_SYSCALL_TABLE)
 +    const char *type = "Hookless";
 +#elif defined(CONFIG_KSU_KPROBES_KSUD)
-+    const char *type = "Hybridized";
++    const char *type = "Hybrid";
 +#else
 +    const char *type = "Manual";
 +#endif

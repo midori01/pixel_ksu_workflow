@@ -35,6 +35,10 @@ on:
         required: false
         type: string
         default: 'ReSukiSU/ReSukiSU:main'
+      midorinx_branch:
+        required: false
+        type: string
+        default: 'KernelSU-Next/KernelSU-Next:dev'
       hook_mode:
         required: false
         type: string
@@ -188,6 +192,11 @@ jobs:
               git clone --branch="${BRANCH}" "https://github.com/${REPO}.git" KernelSU
               bash "${{ github.workspace }}/.github/scripts/setup_midorire.sh"
               ;;
+            MidoriNX)
+              IFS=':' read -r REPO BRANCH <<< "${{ inputs.midorinx_branch }}"
+              git clone --branch="${BRANCH}" "https://github.com/${REPO}.git" KernelSU
+              bash "${{ github.workspace }}/.github/scripts/setup_midorinx.sh"
+              ;;
           esac
           ln -sf ../KernelSU/kernel drivers/kernelsu
           grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
@@ -217,6 +226,10 @@ jobs:
               ;;
             MidoriRE)
               patch -p1 < "${{ github.workspace }}/.github/patches/${{ steps.cfg.outputs.kmi_version }}/50_add_susfs_in_gki-${{ steps.cfg.outputs.kmi_version }}.patch"
+              ;;
+            MidoriNX)
+              patch -p1 < "${{ github.workspace }}/.github/patches/${{ steps.cfg.outputs.kmi_version }}/50_add_susfs_in_gki-${{ steps.cfg.outputs.kmi_version }}.patch"
+              patch -p1 -d KernelSU < "${{ github.workspace }}/.github/patches/12_enable_susfs_for_ksu.patch"
               ;;
           esac
 
@@ -308,6 +321,12 @@ jobs:
               save_ksu_commit midorire
               echo "${{ inputs.midorire_branch }}" | cut -d: -f1 | cut -d/ -f1 > "$COMMIT_DIR/midorire_ksu_author"
               echo "${{ inputs.midorire_branch }}" | cut -d: -f1 > "$COMMIT_DIR/midorire_ksu_repo"
+              save_susfs_commit
+              ;;
+            MidoriNX)
+              save_ksu_commit midorinx
+              echo "${{ inputs.midorinx_branch }}" | cut -d: -f1 | cut -d/ -f1 > "$COMMIT_DIR/midorinx_ksu_author"
+              echo "${{ inputs.midorinx_branch }}" | cut -d: -f1 > "$COMMIT_DIR/midorinx_ksu_repo"
               save_susfs_commit
               ;;
           esac

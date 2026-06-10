@@ -32,6 +32,7 @@ on:
           - MidoriSU
           - MidoriXX
           - MidoriRE
+          - MidoriNX
       midorisu_branch:
         description: 'MidoriSU Source'
         required: true
@@ -46,18 +47,28 @@ on:
         default: 'backslashxx/KernelSU:master'
         type: choice
         options:
-          - 'MidoriKSU/KernelSU:main'
           - 'backslashxx/KernelSU:master'
           - 'backslashxx/KernelSU:staging'
+          - 'MidoriKSU/KernelSU:main'
+          - 'MidoriKSU/KernelSU:test'
       midorire_branch:
         description: 'MidoriRE Source'
         required: true
         default: 'ReSukiSU/ReSukiSU:main'
         type: choice
         options:
+          - 'ReSukiSU/ReSukiSU:main'
           - 'midori01/ReSukiSU:main'
           - 'midori01/ReSukiSU:test'
-          - 'ReSukiSU/ReSukiSU:main'
+      midorinx_branch:
+        description: 'MidoriNX Source'
+        required: true
+        default: 'KernelSU-Next/KernelSU-Next:dev'
+        type: choice
+        options:
+          - 'KernelSU-Next/KernelSU-Next:dev'
+          - 'midori01/KernelSU-Next:main'
+          - 'midori01/KernelSU-Next:test'
       hook_mode:
         description: "Hook Mode"
         required: true
@@ -78,7 +89,7 @@ on:
         default: true
         type: boolean
       use_rekernel:
-        description: 'ReKernel'
+        description: 'Re:Kernel'
         required: true
         default: true
         type: boolean
@@ -88,7 +99,7 @@ on:
         default: true
         type: boolean
       build_scene_hider:
-        description: 'eBPF (Scene Hider)'
+        description: 'eBPF Scene Hider'
         required: true
         default: true
         type: boolean
@@ -225,6 +236,7 @@ jobs:
             [[ "$variant" =~ ^(all|MidoriSU)$ ]] && add_variant MidoriSU true
             [[ "$variant" =~ ^(all|MidoriXX)$ ]] && add_variant MidoriXX true
             [[ "$variant" =~ ^(all|MidoriRE)$ ]] && add_variant MidoriRE true
+            [[ "$variant" =~ ^(all|MidoriNX)$ ]] && add_variant MidoriNX true
           done < /tmp/kvs.txt
 
           echo "metadata=$(jq -sc '.' /tmp/metadata.json)" >> $GITHUB_OUTPUT
@@ -264,6 +276,7 @@ jobs:
       midorisu_branch: ${{ inputs.midorisu_branch }}
       midorixx_branch: ${{ inputs.midorixx_branch }}
       midorire_branch: ${{ inputs.midorire_branch }}
+      midorinx_branch: ${{ inputs.midorinx_branch }}
       hook_mode: ${{ needs.setup.outputs.hook_mode_val }}
 
   build_scene_hider:
@@ -348,14 +361,14 @@ jobs:
           echo "MIDORISU_APK=$(basename "$apk" 2>/dev/null)" >> $GITHUB_ENV
           echo "KSUD_VERSION=$(echo "$apk" | grep -oP '\d+(?=-release\.apk$)' || echo "unknown")" >> $GITHUB_ENV
 
-      - name: Download MidoriRE Manager APK
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download --repo midori01/ReSukiSU --pattern "*.apk" --dir release_zips 2>/dev/null || true
-          apk=$(ls release_zips/*.apk 2>/dev/null | head -n 1)
-          echo "MIDORIRE_APK=$(basename "$apk" 2>/dev/null)" >> $GITHUB_ENV
-
+#      - name: Download MidoriRE Manager APK
+#        env:
+#          GH_TOKEN: ${{ github.token }}
+#        run: |
+#          gh release download --repo midori01/ReSukiSU --pattern "*.apk" --dir release_zips 2>/dev/null || true
+#          apk=$(ls release_zips/*.apk 2>/dev/null | head -n 1)
+#          echo "MIDORIRE_APK=$(basename "$apk" 2>/dev/null)" >> $GITHUB_ENV
+#
       - name: Read Commit Info
         id: ksu_info
         run: |
@@ -379,29 +392,32 @@ jobs:
           ksu_line MidoriSU "$(cat commit_info/midorisu_ksu_repo 2>/dev/null)" commit_info/midorisu_ksu_commit
           ksu_line MidoriXX "$(cat commit_info/midorixx_ksu_repo 2>/dev/null)" commit_info/midorixx_ksu_commit
           ksu_line MidoriRE "$(cat commit_info/midorire_ksu_repo 2>/dev/null)" commit_info/midorire_ksu_commit
+          ksu_line MidoriNX "$(cat commit_info/midorinx_ksu_repo 2>/dev/null)" commit_info/midorinx_ksu_commit
 
       - name: Publish Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: "${{ needs.setup.outputs.release_tag }}-${{ matrix.kv }}"
-          name: "Midori Kernel ${{ matrix.kv }} (${{ needs.setup.outputs.release_tag }})"
+          name: "Midori Kernel - ${{ matrix.kv }}"
+          make_latest: ${{ matrix.kv == '6.12' || !contains(needs.setup.outputs.kernel_versions, ',') }}
           body: |
             - **Kernel Source**: [`${{ steps.meta.outputs.mirror_name }}`](${{ steps.meta.outputs.source_base_url }}/${{ steps.meta.outputs.android_version }}-${{ matrix.kv }}-${{ steps.meta.outputs.asb_date }}${{ steps.meta.outputs.r_suffix }}.tar.gz) `${{ steps.meta.outputs.android_version }}-${{ matrix.kv }}.${{ steps.meta.outputs.sub_level }}${{ steps.meta.outputs.r_suffix }}`
             ${{ steps.ksu_info.outputs.midorisu }}
             ${{ steps.ksu_info.outputs.midorixx }}
             ${{ steps.ksu_info.outputs.midorire }}
+            ${{ steps.ksu_info.outputs.midorinx }}
             ${{ steps.ksu_info.outputs.susfs_url && format('- **SUSFS**: [{0}]({1}) {2}', steps.ksu_info.outputs.susfs_commit, steps.ksu_info.outputs.susfs_url, steps.ksu_info.outputs.susfs_date) || '' }}
             - **KSU Driver**: `${{ steps.ksu_info.outputs.driver_version || env.KSUD_VERSION }}`　**KSUD Version**: `${{ env.KSUD_VERSION }}`
-            - **Manager 1**: `${{ env.MIDORISU_APK }}`
-            - **Manager 2**: `${{ env.MIDORIRE_APK }}`
+            - **Manager**: `${{ env.MIDORISU_APK }}`
             - **Spoofed uname**: `${{ matrix.kv }}.${{ steps.meta.outputs.sub_level }}${{ inputs.kernel_localversion }}`
             - **Spoofed Build Time**: `${{ inputs.build_timestamp }}`
             - **Spoofed Builder**: `${{ inputs.build_user }}@${{ inputs.build_host }}`
-            - **Droidspaces**: ${{ inputs.use_droidspaces && '✅' || '❌' }}　**NTSync**: ${{ inputs.use_droidspaces && '✅' || '❌' }}　**ReKernel**: ${{ inputs.use_rekernel && '✅' || '❌' }}
-            - **TMPFS**: ✅　**BBR**: ✅　**IPSET**: ✅　**Ccache**: ${{ inputs.use_ccache && '✅' || '❌' }}
+            - **Unicode Bypass**: ${{ inputs.unicode_bypass_fix && '`✅ Fixed`' || '`❌ Vulnerable`' }}　**Re:Kernel**: ${{ inputs.use_rekernel && '`✅ Built-in`' || '❌' }}
+            - **Droidspaces**: ${{ inputs.use_droidspaces && '✅' || '❌' }}　**NTSync**: ${{ inputs.use_droidspaces && '✅' || '❌' }}　**Ccache**: ${{ inputs.use_ccache && '`✅ Enabled`' || '`❌ Disabled`' }}
+            - **TMPFS**: ✅　**BBR**: ✅　**IPSET**: ✅　**Enhanced NAT**: ✅
             - **eBPF**: ${{ env.EBPF_FILE && format('✅ `({0})`', env.EBPF_FILE) || '❌' }}
             - **KSU Toolkit**: ${{ env.TOOLKIT_FILE && format('✅ `({0})`', env.TOOLKIT_FILE) || '❌' }}
-            - **LLVM Clang**: `${{ steps.meta.outputs.clang_version }}`${{ steps.meta.outputs.rust_version && format('　**Rust**: `{0}`', steps.meta.outputs.rust_version) || '' }}
+            - **Compiler**: `clang-${{ steps.meta.outputs.clang_version }}`${{ steps.meta.outputs.rust_version && format('　**Rust**: `{0}`', steps.meta.outputs.rust_version) || '' }}
           files: |
             release_zips/*.zip
             release_zips/*.apk
