@@ -16,11 +16,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           echo "Fetching releases..."
-          gh release list --limit 200 --exclude-drafts --exclude-pre-releases \
-            --json tagName \
-            -q '[.[].tagName] | sort | reverse | .[3:] | .[]' \
-            | while read -r tag; do
-              echo "Deleting release and tag: $tag"
-              gh release delete "$tag" --yes --cleanup-tag
-            done
-          echo "Done! Kept latest 3 releases."
+          for kv in 6.1 6.6 6.12; do
+            echo "Processing $kv..."
+            gh release list --limit 100 --exclude-drafts --exclude-pre-releases \
+              --json tagName \
+              -q "[.[].tagName] | map(select(endswith(\"-$kv\"))) | sort | reverse | .[1:] | .[]" \
+              | while read -r tag; do
+                echo "Deleting release and tag: $tag"
+                gh release delete "$tag" --yes --cleanup-tag
+              done
+          done
+          echo "Done! Kept latest release per kernel version."

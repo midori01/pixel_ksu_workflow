@@ -39,6 +39,10 @@ on:
         required: false
         type: string
         default: 'KernelSU-Next/KernelSU-Next:dev'
+      midoriog_branch:
+        required: false
+        type: string
+        default: 'tiann/KernelSU:main'
       hook_mode:
         required: false
         type: string
@@ -197,6 +201,11 @@ jobs:
               git clone --branch="${BRANCH}" "https://github.com/${REPO}.git" KernelSU
               bash "${{ github.workspace }}/.github/scripts/setup_midorinx.sh"
               ;;
+            MidoriOG)
+              IFS=':' read -r REPO BRANCH <<< "${{ inputs.midoriog_branch }}"
+              git clone --branch="${BRANCH}" "https://github.com/${REPO}.git" KernelSU
+              bash "${{ github.workspace }}/.github/scripts/setup_midoriog.sh"
+              ;;
           esac
           ln -sf ../KernelSU/kernel drivers/kernelsu
           grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
@@ -230,6 +239,11 @@ jobs:
             MidoriNX)
               patch -p1 < "${{ github.workspace }}/.github/patches/${{ steps.cfg.outputs.kmi_version }}/50_add_susfs_in_gki-${{ steps.cfg.outputs.kmi_version }}.patch"
               patch -p1 -d KernelSU < "${{ github.workspace }}/.github/patches/12_enable_susfs_for_ksu.patch"
+              ;;
+            MidoriOG)
+              patch -p1 < "${{ github.workspace }}/.github/patches/${{ steps.cfg.outputs.kmi_version }}/50_add_susfs_in_gki-${{ steps.cfg.outputs.kmi_version }}.patch"
+              patch -p1 -d KernelSU < "$SUSFS_DIR/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
+              patch -p1 -d KernelSU < "${{ github.workspace }}/.github/patches/ksu_toolkit_for_ksu_driver.patch"
               ;;
           esac
 
@@ -305,7 +319,7 @@ jobs:
           }
           case "${{ inputs.variant }}" in
             MidoriSU)
-              git rev-list --count HEAD > "$COMMIT_DIR/ksu_commit_count"
+              git rev-list --count HEAD > "$COMMIT_DIR/midorisu_ksu_commit_count"
               save_ksu_commit midorisu
               echo "${{ inputs.midorisu_branch }}" | cut -d: -f1 | cut -d/ -f1 > "$COMMIT_DIR/midorisu_ksu_author"
               echo "${{ inputs.midorisu_branch }}" | cut -d: -f1 > "$COMMIT_DIR/midorisu_ksu_repo"
@@ -327,6 +341,12 @@ jobs:
               save_ksu_commit midorinx
               echo "${{ inputs.midorinx_branch }}" | cut -d: -f1 | cut -d/ -f1 > "$COMMIT_DIR/midorinx_ksu_author"
               echo "${{ inputs.midorinx_branch }}" | cut -d: -f1 > "$COMMIT_DIR/midorinx_ksu_repo"
+              save_susfs_commit
+              ;;
+            MidoriOG)
+              save_ksu_commit midoriog
+              echo "${{ inputs.midoriog_branch }}" | cut -d: -f1 | cut -d/ -f1 > "$COMMIT_DIR/midoriog_ksu_author"
+              echo "${{ inputs.midoriog_branch }}" | cut -d: -f1 > "$COMMIT_DIR/midoriog_ksu_repo"
               save_susfs_commit
               ;;
           esac

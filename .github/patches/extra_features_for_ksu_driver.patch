@@ -1,0 +1,105 @@
+From: midori01 <lv@lvlv.lv>
+Date: Thu, 11 Jun 2026 06:20:53 +0900
+Subject: [PATCH] Import hook type and SUSFS version display for ksu driver
+
+---
+ kernel/supercall/dispatch.c | 48 +++++++++++++++++++++++++++++++++++++
+ uapi/supercall.h            | 10 ++++++++
+ 2 files changed, 58 insertions(+)
+
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index 68c333f1..a2829e3a 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -688,6 +688,42 @@ static int do_disable_escape_to_root(void __user *arg)
+     return 0;
+ }
+ 
++static int do_get_hook_type(void __user *arg)
++{
++    struct ksu_hook_type_cmd cmd = { 0 };
++
++#ifdef CONFIG_KSU_SUSFS
++    const char *type = "Inline";
++#else
++    const char *type = "Kprobes";
++#endif
++
++    strscpy(cmd.hook_type, type, sizeof(cmd.hook_type));
++
++    if (copy_to_user(arg, &cmd, sizeof(cmd))) {
++        pr_err("get_hook_type: copy_to_user failed\n");
++        return -EFAULT;
++    }
++
++    return 0;
++}
++
++static int do_get_susfs_version(void __user *arg)
++{
++    struct ksu_susfs_version_cmd cmd = { 0 };
++
++#ifdef CONFIG_KSU_SUSFS
++    strscpy(cmd.version, SUSFS_VERSION, sizeof(cmd.version));
++#else
++    strscpy(cmd.version, "Not supported", sizeof(cmd.version));
++#endif
++
++    if (copy_to_user(arg, &cmd, sizeof(cmd))) {
++        return -EFAULT;
++    }
++    return 0;
++}
++
+ // IOCTL handlers mapping table
+ // clang-format off
+ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
+@@ -835,6 +871,18 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
+         .handler = do_disable_escape_to_root, 
+         .perm_check = only_root 
+     },
++    {
++        .cmd = KSU_IOCTL_HOOK_TYPE,
++        .name = "HOOK_TYPE",
++        .handler = do_get_hook_type,
++        .perm_check = manager_or_root
++    },
++    {
++        .cmd = KSU_IOCTL_SUSFS_VERSION,
++        .name = "SUSFS_VERSION",
++        .handler = do_get_susfs_version,
++        .perm_check = manager_or_root
++    },
+     {
+         .cmd = 0,
+         .name = NULL,
+diff --git a/uapi/supercall.h b/uapi/supercall.h
+index 8f345086..0987d785 100644
+--- a/uapi/supercall.h
++++ b/uapi/supercall.h
+@@ -144,6 +144,14 @@ struct ksu_get_sulog_fd_cmd {
+     __u32 flags; /* Input: reserved for future use, must be 0 */
+ };
+ 
++struct ksu_hook_type_cmd {
++    char hook_type[32];
++};
++
++struct ksu_susfs_version_cmd {
++    char version[32];
++};
++
+ static const __u8 KSU_UMOUNT_WIPE = 0; /* ignore everything and wipe list */
+ static const __u8 KSU_UMOUNT_ADD = 1; /* add entry (path + flags) */
+ static const __u8 KSU_UMOUNT_DEL = 2; /* delete entry, strcmp */
+@@ -176,5 +184,7 @@ static const __u32 KSU_IOCTL_ADD_TRY_UMOUNT = _IOC(_IOC_WRITE, 'K', 18, 0);
+ static const __u32 KSU_IOCTL_SET_INIT_PGRP = _IO('K', 19);
+ static const __u32 KSU_IOCTL_GET_SULOG_FD = _IOW('K', 20, struct ksu_get_sulog_fd_cmd);
+ static const __u32 KSU_IOCTL_DISABLE_ESCAPE_TO_ROOT = _IO('K', 21);
++static const __u32 KSU_IOCTL_HOOK_TYPE = _IOC(_IOC_READ, 'K', 101, 0);
++static const __u32 KSU_IOCTL_SUSFS_VERSION = _IOC(_IOC_READ, 'K', 102, 0);
+ 
+ #endif
+-- 
+2.54.0
+

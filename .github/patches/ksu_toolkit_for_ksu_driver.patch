@@ -1,0 +1,372 @@
+From: midori01 <lv@lvlv.lv>
+Date: Thu, 11 Jun 2026 07:40:27 +0900
+Subject: [PATCH] Import ksu toolkit for ksu driver
+
+---
+ kernel/feature/sucompat.c    |   6 +
+ kernel/supercall/dispatch.c  |   8 +-
+ kernel/supercall/supercall.c | 229 +++++++++++++++++++++++++++++++++++
+ kernel/supercall/supercall.h |   6 +
+ 4 files changed, 248 insertions(+), 1 deletion(-)
+
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+index 6b6a47c5..b0bc4304 100644
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -29,6 +29,8 @@
+ #include "sulog/event.h"
+ #include "uapi/sulog.h"
+ 
++extern void write_sulog(uint8_t sym);
++
+ #define SU_PATH "/system/bin/su"
+ #define SH_PATH "/system/bin/sh"
+ 
+@@ -189,6 +191,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+ 
+     pr_info("ksu_handle_execveat_sucompat: su found\n");
+ 
++    write_sulog('x');
+     memcpy((void *)filename->name, ksud_path, sizeof(ksud_path));
+ 
+     ret = escape_with_root_profile();
+@@ -224,6 +227,7 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+     strncpy_from_user(path, *filename_user, sizeof(path));
+ 
+     if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
++        write_sulog('a');
+         pr_info("ksu_handle_faccessat: su->sh!\n");
+         *filename_user = sh_user_path();
+     }
+@@ -239,6 +243,7 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
+     if (likely(memcmp((*filename)->name, su_path, sizeof(su_path))))
+         return 0;
+ 
++    write_sulog('s');
+     pr_info("ksu_handle_stat: su->sh!\n");
+     memcpy((void *)((*filename)->name), sh_path, sizeof(sh_path));
+     return 0;
+@@ -254,6 +259,7 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
+     strncpy_from_user(path, *filename_user, sizeof(path));
+ 
+     if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
++        write_sulog('s');
+         pr_info("ksu_handle_stat: su->sh!\n");
+         *filename_user = sh_user_path();
+     }
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index e340fc74..57cd8dec 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -22,6 +22,7 @@
+ #include "sulog/event.h"
+ #include "sulog/fd.h"
+ #include "supercall/supercall.h"
++extern void write_sulog(uint8_t sym);
+ 
+ static int do_grant_root(void __user *arg)
+ {
+@@ -31,6 +32,7 @@ static int do_grant_root(void __user *arg)
+ 
+     // we already check uid above on allowed_for_su()
+ 
++    write_sulog('i');
+     pr_info("allow root for: %d\n", audit_uid);
+     ret = escape_with_root_profile();
+     ksu_sulog_emit_grant_root(ret, audit_uid, audit_euid, GFP_KERNEL);
+@@ -545,7 +547,11 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+     if (magic2 == KSU_INSTALL_MAGIC2)
+         return ksu_supercall_reboot_handler(arg);
+ 
+-    return -EINVAL;
++#ifdef CONFIG_KSU_SUSFS
++    extern int midorisu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);
++    return midorisu_handle_sys_reboot(magic1, magic2, cmd, arg);
++#endif
++    return 0;
+ }
+ 
+ static int do_nuke_ext4_sysfs(void __user *arg)
+diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
+index 1d422388..eb723beb 100644
+--- a/kernel/supercall/supercall.c
++++ b/kernel/supercall/supercall.c
+@@ -11,11 +11,82 @@
+ #include <linux/uaccess.h>
+ #include <linux/version.h>
+ 
++#include <linux/utsname.h>
++
+ #include "uapi/supercall.h"
+ #include "supercall/internal.h"
+ #include "arch.h"
+ #include "klog.h" // IWYU pragma: keep
+ 
++#include "manager/manager_identity.h"
++#include "supercall/supercall.h"
++
++struct sulog_entry {
++    uint32_t s_time;
++    uint32_t data;
++} __attribute__((packed));
++
++#define SULOG_ENTRY_MAX 250
++#define SULOG_BUFSIZ (SULOG_ENTRY_MAX * sizeof(struct sulog_entry))
++
++static void *sulog_buf_ptr = NULL;
++static uint8_t sulog_index_next = 0;
++static DEFINE_SPINLOCK(sulog_lock);
++
++void sulog_init_heap(void)
++{
++    sulog_buf_ptr = kzalloc(SULOG_BUFSIZ, GFP_KERNEL);
++    if (!sulog_buf_ptr)
++        return;
++    pr_info("sulog_init: allocated %lu bytes on 0x%p\n", SULOG_BUFSIZ, sulog_buf_ptr);
++}
++
++void write_sulog(uint8_t sym)
++{
++    if (!sulog_buf_ptr)
++        return;
++    unsigned int offset = sulog_index_next * sizeof(struct sulog_entry);
++    struct sulog_entry entry = {0};
++    entry.s_time = (uint32_t)(ktime_get_boottime() / 1000000000);
++    entry.data = (uint32_t)current_uid().val;
++    *((char *)&entry.data + 3) = sym;
++    spin_lock(&sulog_lock);
++    *(volatile uint64_t *)(sulog_buf_ptr + offset) = *(volatile uint64_t *)&entry;
++    spin_unlock(&sulog_lock);
++    sulog_index_next = sulog_index_next + 1;
++    if (sulog_index_next >= SULOG_ENTRY_MAX)
++        sulog_index_next = 0;
++}
++
++struct sulog_entry_rcv_ptr {
++    uint64_t index_ptr;
++    uint64_t buf_ptr;
++    uint64_t uptime_ptr;
++};
++
++int send_sulog_dump(void __user *uptr)
++{
++    if (!sulog_buf_ptr)
++        return 1;
++    struct sulog_entry_rcv_ptr sbuf = {0};
++    if (copy_from_user(&sbuf, uptr, sizeof(sbuf)))
++        return 1;
++    if (!sbuf.index_ptr || !sbuf.buf_ptr || !sbuf.uptime_ptr)
++        return 1;
++    uint32_t uptime = (uint32_t)(ktime_get_boottime() / 1000000000);
++    if (copy_to_user((void __user *)sbuf.uptime_ptr, &uptime, sizeof(uptime)))
++        return 1;
++    if (copy_to_user((void __user *)sbuf.index_ptr, &sulog_index_next, sizeof(sulog_index_next)))
++        return 1;
++    spin_lock(&sulog_lock);
++    if (copy_to_user((void __user *)sbuf.buf_ptr, sulog_buf_ptr, SULOG_BUFSIZ)) {
++        spin_unlock(&sulog_lock);
++        return 1;
++    }
++    spin_unlock(&sulog_lock);
++    return 0;
++}
++
+ struct ksu_install_fd_tw {
+     struct callback_head cb;
+     int __user *outp;
+@@ -80,6 +151,9 @@ static void ksu_install_fd_tw_func(struct callback_head *cb)
+     kfree(tw);
+ }
+ 
++uint32_t ksuver_override = 0;
++uint32_t ksuflags_override = 0;
++
+ int ksu_supercall_reboot_handler(void __user **arg)
+ {
+     struct ksu_install_fd_tw *tw;
+@@ -99,12 +173,167 @@ int ksu_supercall_reboot_handler(void __user **arg)
+     return 0;
+ }
+ 
++#ifdef CONFIG_KSU_SUSFS
++int midorisu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg)
++#else
++int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg)
++#endif
++{
++    if (magic1 != KSU_INSTALL_MAGIC1)
++        return 0;
++
++    pr_info("sys_reboot: intercepted call! magic: 0x%x id: %d\n", magic1, magic2);
++
++#ifndef CONFIG_KSU_SUSFS
++    void __user *arg4 = (void __user *)*arg;
++
++    if (magic2 == KSU_INSTALL_MAGIC2) {
++        struct ksu_install_fd_tw *tw;
++        tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
++        if (!tw)
++            return 0;
++        tw->outp = (int __user *)arg4;
++        tw->cb.func = ksu_install_fd_tw_func;
++        if (task_work_add(current, &tw->cb, TWA_RESUME)) {
++            kfree(tw);
++            pr_warn("install fd add task_work failed\n");
++        }
++        return 0;
++    }
++#endif
++
++    u64 reply = (u64)*arg;
++
++    if (magic2 == CHANGE_MANAGER_UID) {
++        if (current_uid().val != 0)
++            return 0;
++        pr_info("sys_reboot: ksu_set_manager_appid to: %d\n", cmd);
++        ksu_set_manager_appid(cmd);
++        if (cmd == ksu_get_manager_appid()) {
++            if (copy_to_user((void __user *)*arg, &reply, sizeof(reply)))
++                pr_info("sys_reboot: reply fail\n");
++        }
++        return 0;
++    }
++
++    if (magic2 == GET_SULOG_DUMP_V2) {
++        if (current_uid().val != 0)
++            return 0;
++        int ret = send_sulog_dump(*arg);
++        if (ret)
++            return 0;
++        if (copy_to_user((void __user *)*arg, &reply, sizeof(reply)))
++            return 0;
++        return 0;
++    }
++
++    if (magic2 == CHANGE_KSUVER) {
++        if (current_uid().val != 0)
++            return 0;
++        pr_info("sys_reboot: ksu_change_ksuver to: %d\n", cmd);
++        ksuver_override = cmd;
++        if (copy_to_user((void __user *)*arg, &reply, sizeof(reply)))
++            return 0;
++        return 0;
++    }
++
++    if (magic2 == CHANGE_SPOOF_UNAME) {
++        if (current_uid().val != 0)
++            return 0;
++        char release_buf[65];
++        char version_buf[65];
++        static char original_release_buf[65] = {0};
++        static char original_version_buf[65] = {0};
++        void ***ppptr = (uintptr_t)arg;
++        uint64_t u_pptr = 0;
++        uint64_t u_ptr = 0;
++        if (copy_from_user(&u_pptr, (void __user *)*ppptr, sizeof(u_pptr)))
++            return 0;
++        if (copy_from_user(&u_ptr, (void __user *)u_pptr, sizeof(u_ptr)))
++            return 0;
++        if (strncpy_from_user(release_buf, (char __user *)u_ptr, sizeof(release_buf)) < 0)
++            return 0;
++        release_buf[sizeof(release_buf) - 1] = '\0';
++        if (strncpy_from_user(version_buf, (char __user *)(u_ptr + strlen(release_buf) + 1), sizeof(version_buf)) < 0)
++            return 0;
++        version_buf[sizeof(version_buf) - 1] = '\0';
++        if (original_release_buf[0] == '\0') {
++            struct new_utsname *u_curr = utsname();
++            strncpy(original_release_buf, u_curr->release, sizeof(original_release_buf));
++            strncpy(original_version_buf, u_curr->version, sizeof(original_version_buf));
++        }
++        if (!strcmp(release_buf, "default"))
++            memcpy(release_buf, original_release_buf, sizeof(release_buf));
++        if (!strcmp(version_buf, "default"))
++            memcpy(version_buf, original_version_buf, sizeof(version_buf));
++        struct new_utsname *u = utsname();
++        down_write(&uts_sem);
++        strncpy(u->release, release_buf, sizeof(u->release));
++        strncpy(u->version, version_buf, sizeof(u->version));
++        up_write(&uts_sem);
++        if (copy_to_user((void __user *)*arg, &reply, sizeof(reply)))
++            return 0;
++        return 0;
++    }
++
++    if (magic2 == CHANGE_KSUFLAGS) {
++        if (current_uid().val != 0)
++            return 0;
++        pr_info("sys_reboot: ksu_change_ksuflags to: %d\n", cmd);
++        ksuflags_override = cmd;
++        if (copy_to_user((void __user *)*arg, &reply, sizeof(reply)))
++            return 0;
++        return 0;
++    }
++
++    return 0;
++}
++
++#ifndef CONFIG_KSU_SUSFS
++#include <linux/kprobes.h>
++
++static int reboot_handler_pre(struct kprobe *p, struct pt_regs *regs)
++{
++    struct pt_regs *real_regs = PT_REAL_REGS(regs);
++    int magic1 = (int)PT_REGS_PARM1(real_regs);
++    int magic2 = (int)PT_REGS_PARM2(real_regs);
++    int cmd = (int)PT_REGS_PARM3(real_regs);
++    void __user **arg = (void __user **)&PT_REGS_SYSCALL_PARM4(real_regs);
++    return ksu_handle_sys_reboot(magic1, magic2, cmd, arg);
++}
++
++static struct kprobe reboot_kp = {
++    .symbol_name = REBOOT_SYMBOL,
++    .pre_handler = reboot_handler_pre,
++};
++#endif
++
+ void __init ksu_supercalls_init(void)
+ {
+     ksu_supercall_dump_commands();
++
++    sulog_init_heap();
++
++#ifndef CONFIG_KSU_SUSFS
++    int rc;
++    rc = register_kprobe(&reboot_kp);
++    if (rc) {
++        pr_err("reboot kprobe failed: %d\n", rc);
++    } else {
++        pr_info("reboot kprobe registered successfully\n");
++    }
++#endif
+ }
+ 
+ void __exit ksu_supercalls_exit(void)
+ {
++    if (sulog_buf_ptr) {
++        memzero_explicit(sulog_buf_ptr, SULOG_BUFSIZ);
++        kfree(sulog_buf_ptr);
++    }
++
++#ifndef CONFIG_KSU_SUSFS
++    unregister_kprobe(&reboot_kp);
++#endif
+     ksu_supercall_cleanup_state();
+ }
+diff --git a/kernel/supercall/supercall.h b/kernel/supercall/supercall.h
+index 483e5069..e0605a86 100644
+--- a/kernel/supercall/supercall.h
++++ b/kernel/supercall/supercall.h
+@@ -22,4 +22,10 @@ int ksu_supercall_reboot_handler(void __user **arg);
+ 
+ void ksu_supercalls_init(void);
+ void ksu_supercalls_exit(void);
++#define CHANGE_MANAGER_UID 10006
++#define GET_SULOG_DUMP 10009
++#define GET_SULOG_DUMP_V2 10010
++#define CHANGE_KSUVER 10011
++#define CHANGE_SPOOF_UNAME 10012
++#define CHANGE_KSUFLAGS 10013
+ #endif // __KSU_H_SUPERCALL
+-- 
+2.54.0
+

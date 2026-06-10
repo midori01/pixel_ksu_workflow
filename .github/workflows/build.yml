@@ -33,6 +33,7 @@ on:
           - MidoriXX
           - MidoriRE
           - MidoriNX
+          - MidoriOG
       midorisu_branch:
         description: 'MidoriSU Source'
         required: true
@@ -69,6 +70,13 @@ on:
           - 'KernelSU-Next/KernelSU-Next:dev'
           - 'midori01/KernelSU-Next:main'
           - 'midori01/KernelSU-Next:test'
+      midoriog_branch:
+        description: 'MidoriOG Source'
+        required: true
+        default: 'tiann/KernelSU:main'
+        type: choice
+        options:
+          - 'tiann/KernelSU:main'
       hook_mode:
         description: "Hook Mode"
         required: true
@@ -237,6 +245,7 @@ jobs:
             [[ "$variant" =~ ^(all|MidoriXX)$ ]] && add_variant MidoriXX true
             [[ "$variant" =~ ^(all|MidoriRE)$ ]] && add_variant MidoriRE true
             [[ "$variant" =~ ^(all|MidoriNX)$ ]] && add_variant MidoriNX true
+            [[ "$variant" =~ ^(all|MidoriOG)$ ]] && add_variant MidoriOG true
           done < /tmp/kvs.txt
 
           echo "metadata=$(jq -sc '.' /tmp/metadata.json)" >> $GITHUB_OUTPUT
@@ -277,6 +286,7 @@ jobs:
       midorixx_branch: ${{ inputs.midorixx_branch }}
       midorire_branch: ${{ inputs.midorire_branch }}
       midorinx_branch: ${{ inputs.midorinx_branch }}
+      midoriog_branch: ${{ inputs.midoriog_branch }}
       hook_mode: ${{ needs.setup.outputs.hook_mode_val }}
 
   build_scene_hider:
@@ -361,14 +371,6 @@ jobs:
           echo "MIDORISU_APK=$(basename "$apk" 2>/dev/null)" >> $GITHUB_ENV
           echo "KSUD_VERSION=$(echo "$apk" | grep -oP '\d+(?=-release\.apk$)' || echo "unknown")" >> $GITHUB_ENV
 
-#      - name: Download MidoriRE Manager APK
-#        env:
-#          GH_TOKEN: ${{ github.token }}
-#        run: |
-#          gh release download --repo midori01/ReSukiSU --pattern "*.apk" --dir release_zips 2>/dev/null || true
-#          apk=$(ls release_zips/*.apk 2>/dev/null | head -n 1)
-#          echo "MIDORIRE_APK=$(basename "$apk" 2>/dev/null)" >> $GITHUB_ENV
-#
       - name: Read Commit Info
         id: ksu_info
         run: |
@@ -386,13 +388,14 @@ jobs:
             out "susfs_url=https://gitlab.com/simonpunk/susfs4ksu/-/commit/$sha"
             out "susfs_date=\`$(cat commit_info/susfs_date)\`"
           fi
-          if [ -f "commit_info/midorisu_ksu_commit" ] && [ -f "commit_info/ksu_commit_count" ]; then
-            out "driver_version=$((30999 + $(cat commit_info/ksu_commit_count)))"
+          if [ -f "commit_info/midorisu_ksu_commit_count" ]; then
+            out "driver_version=$((30999 + $(cat commit_info/midorisu_ksu_commit_count)))"
           fi
           ksu_line MidoriSU "$(cat commit_info/midorisu_ksu_repo 2>/dev/null)" commit_info/midorisu_ksu_commit
           ksu_line MidoriXX "$(cat commit_info/midorixx_ksu_repo 2>/dev/null)" commit_info/midorixx_ksu_commit
           ksu_line MidoriRE "$(cat commit_info/midorire_ksu_repo 2>/dev/null)" commit_info/midorire_ksu_commit
           ksu_line MidoriNX "$(cat commit_info/midorinx_ksu_repo 2>/dev/null)" commit_info/midorinx_ksu_commit
+          ksu_line MidoriOG "$(cat commit_info/midoriog_ksu_repo 2>/dev/null)" commit_info/midoriog_ksu_commit
 
       - name: Publish Release
         uses: softprops/action-gh-release@v3
@@ -406,6 +409,7 @@ jobs:
             ${{ steps.ksu_info.outputs.midorixx }}
             ${{ steps.ksu_info.outputs.midorire }}
             ${{ steps.ksu_info.outputs.midorinx }}
+            ${{ steps.ksu_info.outputs.midoriog }}
             ${{ steps.ksu_info.outputs.susfs_url && format('- **SUSFS**: [{0}]({1}) {2}', steps.ksu_info.outputs.susfs_commit, steps.ksu_info.outputs.susfs_url, steps.ksu_info.outputs.susfs_date) || '' }}
             - **KSU Driver**: `${{ steps.ksu_info.outputs.driver_version || env.KSUD_VERSION }}`　**KSUD Version**: `${{ env.KSUD_VERSION }}`
             - **Manager**: `${{ env.MIDORISU_APK }}`
