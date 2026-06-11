@@ -2,19 +2,13 @@
   "6.1": {
     "android_version": "android14",
     "default_sub_level": "174",
+    "use_lts": true,
     "revisions": {
       "162": {
         "asb_date": "2026-03",
         "default_r": "r15",
         "supported_r": [
           "r15",
-          "none"
-        ]
-      },
-      "173": {
-        "asb_date": "lts",
-        "default_r": "none",
-        "supported_r": [
           "none"
         ]
       },
@@ -34,12 +28,13 @@
   "6.6": {
     "android_version": "android15",
     "default_sub_level": "139",
+    "use_lts": true,
     "revisions": {
       "127": {
         "asb_date": "2026-04",
-        "default_r": "r15",
+        "default_r": "r16",
         "supported_r": [
-          "r15",
+          "r16",
           "none"
         ]
       },
@@ -59,6 +54,7 @@
   "6.12": {
     "android_version": "android16",
     "default_sub_level": "23",
+    "use_lts": false,
     "revisions": {
       "23": {
         "asb_date": "2025-06",

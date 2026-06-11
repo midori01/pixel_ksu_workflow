@@ -1,0 +1,99 @@
+name: 'Restore Cache with Retry'
+description: 'Restore cache with DNS fix and automatic retry on failure'
+
+inputs:
+  path:
+    required: true
+    description: 'Path to restore'
+  key:
+    required: true
+    description: 'Cache key'
+  restore-keys:
+    required: false
+    description: 'Restore keys'
+    default: ''
+
+outputs:
+  cache-hit:
+    description: 'Whether cache was restored successfully'
+    value: ${{ steps.set-output.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Init
+      shell: bash
+      run: |
+        mkdir -p ${{ inputs.path }}
+        find ${{ inputs.path }} -type f 2>/dev/null | wc -l > /tmp/cache-count-before || echo 0 > /tmp/cache-count-before
+
+    - name: Restore attempt 1
+      id: restore1
+      continue-on-error: true
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}
+
+    - name: Check 1
+      id: check1
+      if: always()
+      shell: bash
+      run: |
+        AFTER=$(find ${{ inputs.path }} -type f 2>/dev/null | wc -l || echo 0)
+        BEFORE=$(cat /tmp/cache-count-before 2>/dev/null || echo 0)
+        if [ "$AFTER" -gt "$BEFORE" ]; then
+          echo "hit=true" >> $GITHUB_OUTPUT
+          echo "✅ Restored on attempt 1"
+        else
+          echo "hit=false" >> $GITHUB_OUTPUT
+          echo "❌ Attempt 1 failed"
+        fi
+
+    - name: Restore attempt 2
+      id: restore2
+      if: steps.check1.outputs.hit == 'false'
+      continue-on-error: true
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}
+
+    - name: Check 2
+      id: check2
+      if: always() && steps.check1.outputs.hit == 'false'
+      shell: bash
+      run: |
+        AFTER=$(find ${{ inputs.path }} -type f 2>/dev/null | wc -l || echo 0)
+        BEFORE=$(cat /tmp/cache-count-before 2>/dev/null || echo 0)
+        if [ "$AFTER" -gt "$BEFORE" ]; then
+          echo "hit=true" >> $GITHUB_OUTPUT
+          echo "✅ Restored on attempt 2"
+        else
+          echo "hit=false" >> $GITHUB_OUTPUT
+          echo "❌ Attempt 2 failed"
+        fi
+
+    - name: Restore attempt 3
+      id: restore3
+      if: steps.check1.outputs.hit == 'false' && steps.check2.outputs.hit == 'false'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}
+
+    - name: Set output
+      id: set-output
+      if: always()
+      shell: bash
+      run: |
+        AFTER=$(find ${{ inputs.path }} -type f 2>/dev/null | wc -l || echo 0)
+        BEFORE=$(cat /tmp/cache-count-before 2>/dev/null || echo 0)
+        if [ "$AFTER" -gt "$BEFORE" ]; then
+          echo "cache-hit=true" >> $GITHUB_OUTPUT
+        else
+          echo "cache-hit=false" >> $GITHUB_OUTPUT
+        fi

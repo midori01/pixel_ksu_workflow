@@ -1,6 +1,6 @@
 From: midori01 <lv@lvlv.lv>
 Date: Thu, 11 Jun 2026 06:20:53 +0900
-Subject: [PATCH] Import hook type and SUSFS version display for ksu driver
+Subject: [PATCH] Enable hook type and SUSFS version display for tiann/KernelSU
 
 ---
  kernel/supercall/dispatch.c | 48 +++++++++++++++++++++++++++++++++++++

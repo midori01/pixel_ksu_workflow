@@ -24,6 +24,6 @@ if [ -f "KernelSU/kernel/Makefile" ]; then
   sed -i "s/-DKSU_VERSION=[0-9]*/-DKSU_VERSION=$NEW_KSU_VERSION/g" KernelSU/kernel/Makefile
 fi
 
-patch -p1 -d KernelSU --forward < "${GITHUB_WORKSPACE}/.github/patches/extra_features_for_xx_driver.patch" || true
+patch -p1 -d KernelSU < "${GITHUB_WORKSPACE}/.github/patches/21_extra_features_for_ksu.patch"
 
 echo "[+] MidoriXX setup complete."

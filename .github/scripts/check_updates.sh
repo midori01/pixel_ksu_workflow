@@ -11,13 +11,11 @@ REPO="${GITHUB_REPOSITORY:-midori01/gki_ksu_workflow}"
 SUB_612=$(jq -r '.["6.12"].default_sub_level' "$CONFIG_FILE")
 R_612=$(jq -r ".[\"6.12\"].revisions[\"$SUB_612\"].default_r" "$CONFIG_FILE")
 
-SUB_66_TAG=$(jq -r '.["6.6"].revisions | to_entries[] | select(.value.asb_date == "2026-04") | .key' "$CONFIG_FILE")
+TAG_DATES_66=$(jq -r '.["6.6"].revisions | to_entries[] | select(.value.asb_date != "lts") | .value.asb_date' "$CONFIG_FILE")
+TAG_DATES_61=$(jq -r '.["6.1"].revisions | to_entries[] | select(.value.asb_date != "lts") | .value.asb_date' "$CONFIG_FILE")
 
-SUB_66_LTS=$(jq -r '.["6.6"].revisions | to_entries[] | select(.value.asb_date == "lts") | .key' "$CONFIG_FILE")
-
-SUB_61_TAG=$(jq -r '.["6.1"].revisions | to_entries[] | select(.value.asb_date == "2026-03") | .key' "$CONFIG_FILE")
-
-SUB_61_LTS=$(jq -r '.["6.1"].revisions | to_entries[] | select(.value.asb_date == "lts") | .key' "$CONFIG_FILE")
+SUB_66_LTS=$(jq -r '[.["6.6"].revisions | to_entries[] | select(.value.asb_date == "lts") | .key | tonumber] | max' "$CONFIG_FILE")
+SUB_61_LTS=$(jq -r '[.["6.1"].revisions | to_entries[] | select(.value.asb_date == "lts") | .key | tonumber] | max' "$CONFIG_FILE")
 
 NEEDS_COMMIT=false
 
@@ -80,7 +78,7 @@ check_tag() {
   local android_ver=$(jq -r ".[\"$kv\"].android_version" "$CONFIG_FILE")
   local prefix="${android_ver}-${kv}-${asb_date}"
 
-  local latest_tag=$(grep "^${prefix}" "$TMP_DIR/all_tags.txt" | tail -n 1)
+  local latest_tag=$(grep -E "^${prefix}(_r[0-9]+)?\$" "$TMP_DIR/all_tags.txt" | tail -n 1)
 
   if [[ -z "$latest_tag" ]]; then
     echo "  No tags found for $prefix"
@@ -89,7 +87,8 @@ check_tag() {
 
   echo "  Latest tag: $latest_tag"
 
-  local new_sub=$(echo "$latest_tag" | grep -oP "(?<=${kv}\.)[0-9]+" | head -n 1)
+  local escaped_kv="${kv//./\\.}"
+  local new_sub=$(echo "$latest_tag" | grep -oP "(?<=${escaped_kv}\.)[0-9]+" | head -n 1)
   [[ -z "$new_sub" ]] && new_sub="$current_sub"
 
   local new_r=$(echo "$latest_tag" | grep -oP '_r\d+' | head -n 1)
@@ -103,9 +102,14 @@ check_tag() {
 
   echo "  New: sub=$new_sub r=$new_r"
 
+  local use_lts=$(jq -r ".[\"$kv\"].use_lts // false" "$CONFIG_FILE")
   local new_default="$new_sub"
   local current_default=$(jq -r ".[\"$kv\"].default_sub_level" "$CONFIG_FILE")
-  if [[ "$new_sub" -lt "$current_default" ]]; then
+
+  if [[ "$use_lts" == "true" ]]; then
+    new_default="$current_default"
+    echo "  use_lts=true, keeping default_sub_level=$current_default."
+  elif [[ "$new_sub" -lt "$current_default" ]]; then
     new_default="$current_default"
     echo "  Tag sub_level ($new_sub) < current default ($current_default), keeping default_sub_level."
   fi
@@ -132,6 +136,17 @@ check_lts() {
   echo ""
   echo "=== Checking $kv LTS (current sub=$current_sub) ==="
 
+  if [[ ! "$current_sub" =~ ^[0-9]+$ ]]; then
+    echo "  Invalid current_sub: $current_sub"
+    return
+  fi
+
+  local use_lts=$(jq -r ".[\"$kv\"].use_lts // false" "$CONFIG_FILE")
+  if [[ "$use_lts" != "true" ]]; then
+    echo "  use_lts != true, skipping LTS update."
+    return
+  fi
+
   local android_ver=$(jq -r ".[\"$kv\"].android_version" "$CONFIG_FILE")
 
   local makefile_url="https://android.googlesource.com/kernel/common/+/refs/heads/${android_ver}-${kv}-lts/Makefile?format=TEXT"
@@ -152,6 +167,7 @@ check_lts() {
   jq --arg kv "$kv" \
      --arg sub "$new_sub" \
      '.[$kv].default_sub_level = $sub |
+      .[$kv].revisions |= with_entries(select(.value.asb_date != "lts")) |
       .[$kv].revisions[$sub] = {"asb_date": "lts", "default_r": "none", "supported_r": ["none"]}' \
      "$CONFIG_FILE" > "$CONFIG_FILE.tmp" && mv "$CONFIG_FILE.tmp" "$CONFIG_FILE"
 
@@ -161,9 +177,19 @@ check_lts() {
 }
 
 check_tag "6.12" "2025-06" "$SUB_612" "$R_612"
-check_tag "6.6" "2026-04" "$SUB_66_TAG" "r14"
+
+for date in $TAG_DATES_66; do
+  sub=$(jq -r ".[\"6.6\"].revisions | to_entries[] | select(.value.asb_date == \"$date\") | .key" "$CONFIG_FILE")
+  r=$(jq -r ".[\"6.6\"].revisions[\"$sub\"].default_r" "$CONFIG_FILE")
+  check_tag "6.6" "$date" "$sub" "$r"
+done
 check_lts "6.6" "$SUB_66_LTS"
-check_tag "6.1" "2026-03" "$SUB_61_TAG" "r14"
+
+for date in $TAG_DATES_61; do
+  sub=$(jq -r ".[\"6.1\"].revisions | to_entries[] | select(.value.asb_date == \"$date\") | .key" "$CONFIG_FILE")
+  r=$(jq -r ".[\"6.1\"].revisions[\"$sub\"].default_r" "$CONFIG_FILE")
+  check_tag "6.1" "$date" "$sub" "$r"
+done
 check_lts "6.1" "$SUB_61_LTS"
 
 if [ "$NEEDS_COMMIT" = true ]; then

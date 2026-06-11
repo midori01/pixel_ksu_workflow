@@ -31,6 +31,6 @@ echo "[+] Dynamic KSU_VERSION (based on MidoriSU): $NEW_KSU_VERSION"
 
 sed -i "s|^\$(eval KSU_VERSION=.*|KSU_VERSION := ${NEW_KSU_VERSION}|" KernelSU/kernel/Kbuild
 
-patch -p1 -d KernelSU --forward < "${GITHUB_WORKSPACE}/.github/patches/extra_features_for_ksu_driver.patch" || true
+patch -p1 -d KernelSU < "${GITHUB_WORKSPACE}/.github/patches/20_extra_features_for_ksu.patch"
 
 echo "[+] MidoriOG setup complete."

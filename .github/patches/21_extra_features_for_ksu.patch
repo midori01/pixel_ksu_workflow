@@ -1,17 +1,18 @@
 From: midori01 <lv@lvlv.lv>
-Date: Tue, 9 Jun 2026 22:14:29 +0900
-Subject: [PATCH] Import hook type and SUSFS version display for xx driver
+Date: Thu, 11 Jun 2026 10:36:55 +0900
+Subject: [PATCH] Enable hook type and SUSFS version display for backslashxx/KernelSU
 
+Signed-off-by: midori01 <lv@lvlv.lv>
 ---
  kernel/include/uapi/supercall.h | 10 ++++++++
  kernel/supercall/dispatch.c     | 42 +++++++++++++++++++++++++++++++++
  2 files changed, 52 insertions(+)
 
 diff --git a/kernel/include/uapi/supercall.h b/kernel/include/uapi/supercall.h
-index dbfc5f11..57de086e 100644
+index 839b2503..c472ea19 100644
 --- a/kernel/include/uapi/supercall.h
 +++ b/kernel/include/uapi/supercall.h
-@@ -129,6 +129,14 @@ struct ksu_get_sulog_fd_cmd {
+@@ -139,6 +139,14 @@ struct ksu_get_sulog_fd_cmd {
  	__u32 flags; /* Input: reserved for future use, must be 0 */
  };
  
@@ -26,20 +27,20 @@ index dbfc5f11..57de086e 100644
  #define KSU_UMOUNT_WIPE 0	// ignore everything and wipe list
  #define KSU_UMOUNT_ADD 1	// add entry (path + flags)
  #define KSU_UMOUNT_DEL 2	// delete entry, strcmp
-@@ -158,5 +166,7 @@ struct ksu_get_sulog_fd_cmd {
- #define KSU_IOCTL_ADD_TRY_UMOUNT _IOC(_IOC_WRITE, 'K', 18, 0)
+@@ -170,5 +178,7 @@ struct ksu_get_sulog_fd_cmd {
  #define KSU_IOCTL_SET_INIT_PGRP _IO('K', 19)
  #define KSU_IOCTL_GET_SULOG_FD _IOW('K', 20, struct ksu_get_sulog_fd_cmd)
+ #define KSU_IOCTL_DISABLE_ESCAPE_TO_ROOT _IO('K', 21)
 +#define KSU_IOCTL_HOOK_TYPE _IOC(_IOC_READ, 'K', 101, 0)
 +#define KSU_IOCTL_SUSFS_VERSION _IOC(_IOC_READ, 'K', 102, 0)
  
  #endif
 diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
-index 2ea7d8b4..5dc2c3a6 100644
+index 014291a8..6fbf63bb 100644
 --- a/kernel/supercall/dispatch.c
 +++ b/kernel/supercall/dispatch.c
-@@ -665,6 +665,46 @@ static int do_get_sulog_fd(void __user *arg)
- 	return ksu_install_sulog_fd();
+@@ -690,6 +690,46 @@ static int do_disable_escape_to_root(void __user *arg)
+ 	return 0;
  }
  
 +static int do_get_hook_type(void __user *arg)
@@ -85,10 +86,10 @@ index 2ea7d8b4..5dc2c3a6 100644
  // IOCTL handlers mapping table
  static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
  	{ .cmd = KSU_IOCTL_GRANT_ROOT, .name = "GRANT_ROOT", .handler = do_grant_root, .perm_check = allowed_for_su },
-@@ -689,6 +729,8 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
- 	{ .cmd = KSU_IOCTL_ADD_TRY_UMOUNT, .name = "ADD_TRY_UMOUNT", .handler = add_try_umount, .perm_check = manager_or_root },
+@@ -716,6 +756,8 @@ static const struct ksu_ioctl_cmd_map ksu_ioctl_handlers[] = {
  	{ .cmd = KSU_IOCTL_SET_INIT_PGRP, .name = "SET_INIT_PGRP", .handler = do_set_init_pgrp, .perm_check = only_root },
  	{ .cmd = KSU_IOCTL_GET_SULOG_FD, .name = "GET_SULOG_FD", .handler = do_get_sulog_fd, .perm_check = only_root },
+ 	{ .cmd = KSU_IOCTL_DISABLE_ESCAPE_TO_ROOT, .name = "DISABLE_ESCAPE_TO_ROOT", .handler = do_disable_escape_to_root, .perm_check = only_root },
 +	{ .cmd = KSU_IOCTL_HOOK_TYPE, .name = "HOOK_TYPE", .handler = do_get_hook_type, .perm_check = manager_or_root },
 +	{ .cmd = KSU_IOCTL_SUSFS_VERSION, .name = "SUSFS_VERSION", .handler = do_get_susfs_version, .perm_check = manager_or_root },
  	{ .cmd = 0, .name = NULL, .handler = NULL, .perm_check = NULL } // Sentinel

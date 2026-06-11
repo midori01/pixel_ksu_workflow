@@ -123,18 +123,16 @@ jobs:
       - name: Restore Ccache
         if: inputs.use_ccache
         id: cache-restore
-        uses: actions/cache/restore@v5
+        uses: ./.github/actions/restore-cache-retry
         with:
-          path: |
-            .ccache-${{ inputs.variant }}${{ inputs.use_susfs && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}
-          key: gki-${{ inputs.kernel_version }}-${{ steps.cfg.outputs.clang_version }}-${{ steps.cfg.outputs.asb_date }}${{ steps.cfg.outputs.r_suffix }}-${{ inputs.variant }}${{ inputs.use_susfs && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}-${{ github.run_id }}-${{ strategy.job-index }}
-          restore-keys: |
-            gki-${{ inputs.kernel_version }}-${{ steps.cfg.outputs.clang_version }}-${{ steps.cfg.outputs.asb_date }}${{ steps.cfg.outputs.r_suffix }}-${{ inputs.variant }}${{ inputs.use_susfs && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}-
+          path: .ccache-${{ inputs.variant }}${{ inputs.use_susfs && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}
+          key: gki-${{ inputs.kernel_version }}-${{ steps.cfg.outputs.clang_version }}-${{ steps.cfg.outputs.asb_date }}${{ steps.cfg.outputs.r_suffix }}-${{ inputs.variant }}${{ inputs.use_susfs && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}-${{ github.run_id }}
+          restore-keys: gki-${{ inputs.kernel_version }}-${{ steps.cfg.outputs.clang_version }}-${{ steps.cfg.outputs.asb_date }}${{ steps.cfg.outputs.r_suffix }}-${{ inputs.variant }}${{ inputs.use_susfs && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}-
 
       - name: Setup Ccache Wrappers
         if: inputs.use_ccache
         run: |
-          for i in $(seq 1 60); do which ccache && break; sleep 1; done
+          for i in $(seq 1 60); do which ccache >/dev/null 2>&1 && break; sleep 1; done
           which ccache || { echo "ccache not found after waiting"; exit 1; }
           CCACHE_PATH="${{ github.workspace }}/.ccache-bin"
           mkdir -p "$CCACHE_PATH" && rm -f "$CCACHE_PATH"/*
@@ -142,13 +140,20 @@ jobs:
             ln -sf "$(which ccache)" "$CCACHE_PATH/$prog"
           done
           echo "$CCACHE_PATH" >> $GITHUB_PATH
-          ccache -M 10G
-          ccache -o hash_dir=false
-          ccache -o compiler_check=content
-          ccache -o sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,modules
-          ccache -o depend_mode=true
-          ccache -o run_second_cpp=true
-          ccache -z
+          ccache -M 10G \
+            -o hash_dir=false \
+            -o compiler_check=content \
+            -o "sloppiness=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,modules" \
+            -o depend_mode=true \
+            -o run_second_cpp=true \
+            -o compression=true \
+            -o compression_level=1 \
+            -o keep_comments_cpp=true \
+            -o "cache_dir=${{ env.CCACHE_DIR }}" \
+            -o "base_dir=${{ github.workspace }}" \
+            -o file_clone=true \
+            -o hard_link=true \
+            -z
 
       - name: Download Toolchains & Kernel Source
         run: |
@@ -243,7 +248,7 @@ jobs:
             MidoriOG)
               patch -p1 < "${{ github.workspace }}/.github/patches/${{ steps.cfg.outputs.kmi_version }}/50_add_susfs_in_gki-${{ steps.cfg.outputs.kmi_version }}.patch"
               patch -p1 -d KernelSU < "$SUSFS_DIR/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
-              patch -p1 -d KernelSU < "${{ github.workspace }}/.github/patches/ksu_toolkit_for_ksu_driver.patch"
+              patch -p1 -d KernelSU < "${{ github.workspace }}/.github/patches/30_ksu_toolkit_for_ksu.patch"
               ;;
           esac
 
@@ -407,9 +412,8 @@ jobs:
         if: inputs.use_ccache
         uses: actions/cache/save@v5
         with:
-          path: |
-            .ccache-${{ inputs.variant }}${{ inputs.use_susfs && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}
-          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
+          path: .ccache-${{ inputs.variant }}${{ inputs.use_susfs && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}
+          key: gki-${{ inputs.kernel_version }}-${{ steps.cfg.outputs.clang_version }}-${{ steps.cfg.outputs.asb_date }}${{ steps.cfg.outputs.r_suffix }}-${{ inputs.variant }}${{ inputs.use_susfs && '-susfs' || '' }}${{ inputs.use_droidspaces && '-ds' || '' }}-${{ github.run_id }}
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v7
